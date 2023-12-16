@@ -25,45 +25,49 @@ class System:
 
     def run(self,max_iter = 2, save_rays = False):
         if hasattr(self,'source'):
-            k_rays = self.source.launch()[2:3]
+            k_rays = self.source.launch()
             z_layer = np.asarray(list(self.layers.keys()))
-            for num in range(max_iter):
-                print(num,len(k_rays))
-                index = np.sqrt(np.sum(k_rays[:,1:4]**2,axis = 1))
-                direction_cosine = k_rays[:,1:4]/index[:,np.newaxis]
-                delta_z = z_layer-k_rays[:,6:7]
-                step = delta_z/direction_cosine[:,-1:]
-                step = np.min(np.where(step > 0, step, np.inf), axis=1)
-                k_rays = k_rays[~np.isinf(step)]
-                direction_cosine = direction_cosine[~np.isinf(step)]
-                step = step[~np.isinf(step)]
-                step = direction_cosine*step[:,np.newaxis]
-                start = deepcopy(k_rays[:,4:7]) if save_rays else []
-                k_rays[:,4:7] += step
-                k_rays[:,4:7] = np.round(k_rays[:,4:7],6)
-                end = deepcopy(k_rays[:,4:7]) if save_rays else []
-                if save_rays:
-                    for i in range(len(k_rays)):
-                        ray = o3d.geometry.LineSet(points=o3d.utility.Vector3dVector([start[i],end[i]]),
-                                                   lines=o3d.utility.Vector2iVector([[0,1]]))
-                        ray.paint_uniform_color([1,0,0])
-                        self.lineset += [ray]
-                next_krays = []
-                for z in z_layer:
-                    on_layer_kray = k_rays[np.round(k_rays[:,6],4) == z]
-                    k_rays = k_rays[np.round(k_rays[:,6],6) != z]
-                    for element in self.layers[z]:
-                        mask = element[1].contains_points(on_layer_kray[:,4:6],radius=1E-3)
-                        if element[0]:
-                            next_krays += [element[0].launched(on_layer_kray[mask])]
-                        on_layer_kray = on_layer_kray[~mask]
-                k_rays = np.vstack(next_krays)
-                if len(k_rays)==0:
-                    break
+            
+            for k_rays_i in k_rays:
+                t0 = time.time()
+                print(k_rays_i[1:4])
+                k_rays_i = k_rays_i[np.newaxis,:]
+                for num in range(max_iter):
+                    index = np.sqrt(np.sum(k_rays_i[:,1:4]**2,axis = 1))
+                    direction_cosine = k_rays_i[:,1:4]/index[:,np.newaxis]
+                    delta_z = z_layer-k_rays_i[:,6:7]
+                    step = delta_z/direction_cosine[:,-1:]
+                    step = np.min(np.where(step > 0, step, np.inf), axis=1)
+                    k_rays_i = k_rays_i[~np.isinf(step)]
+                    direction_cosine = direction_cosine[~np.isinf(step)]
+                    step = step[~np.isinf(step)]
+                    step = direction_cosine*step[:,np.newaxis]
+                    start = deepcopy(k_rays_i[:,4:7]) if save_rays else []
+                    k_rays_i[:,4:7] += step
+                    k_rays_i[:,4:7] = np.round(k_rays_i[:,4:7],6)
+                    end = deepcopy(k_rays_i[:,4:7]) if save_rays else []
+                    if save_rays:
+                        for i in range(len(k_rays_i)):
+                            ray = o3d.geometry.LineSet(points=o3d.utility.Vector3dVector([start[i],end[i]]),
+                                                    lines=o3d.utility.Vector2iVector([[0,1]]))
+                            ray.paint_uniform_color([1,0,0])
+                            self.lineset += [ray]
+                    next_krays = []
+                    for z in z_layer:
+                        on_layer_kray = k_rays_i[np.round(k_rays_i[:,6],4) == z]
+                        k_rays_i = k_rays_i[np.round(k_rays_i[:,6],6) != z]
+                        for element in self.layers[z]:
+                            mask = element[1].contains_points(on_layer_kray[:,4:6],radius=1E-3)
+                            if element[0]:
+                                next_krays += [element[0].launched(on_layer_kray[mask])]
+                            on_layer_kray = on_layer_kray[~mask]
+                    k_rays_i = np.vstack(next_krays)
+                    if len(k_rays_i)==0:
+                        break
+                print(time.time()-t0)
                     
 
     def draw(self):
-        print(len(self.lineset))
         mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=5, origin=self.boundary.min(axis = 1))
         g_list = [mesh_frame]
         if hasattr(self,'source'):
@@ -97,10 +101,10 @@ Air = Material('Air',Air_coefficient)
 LASF46B = Material('LASF46B',LASF46B_coefficient)
 NC = Material('nc',Nc_coefficient)
 
-source = Source([-38,11.53,1.5],-0.1,[20,20,-15,-15],[0.525], 
+source = Source([-38,11.53,1.5],-0.1,[-20,20,-15,15],[0.525], 
                 stokes_vector = [1,0,0,0],
-                fov_grid = (1,1),
-                spatial_grid = (3,3))
+                fov_grid = (5,5),
+                spatial_grid = (5,5))
 
 G1 = Grating([[0.3795,11]],[Air,LASF46B],delta_order = (1,0))
 G2 = Grating([[0.2772,-122.2]],[Air,LASF46B],delta_order = (1,0))
@@ -122,7 +126,7 @@ system.add_element(20,None,np.array([[6,4.5],[-6,4.5],[-6,-4.5],[6,-4.5],[6,4.5]
 system.draw()
 # %%
 t0 = time.time()
-system.run(max_iter = 300,save_rays = True)
+system.run(max_iter = 300,save_rays = False)
 print(time.time()-t0)
 
 # %%
