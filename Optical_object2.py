@@ -144,27 +144,44 @@ class Grating:
         k_out = deepcopy(k_in)
         k_in = np.hstack((k_in,mn_order))
         k_out[:,1:3] += k_out[:,0:1]*order_gv   #k0 + order*wavelength*g_vector
-        Tkz2 = n_out**2-(k_out[:,1]**2+k_out[:,2]**2)
-        Rkz2 = n_in**2-(k_out[:,1]**2+k_out[:,2]**2)
+        Tkz2 = n_out**2-(k_out[:,1]**2+k_out[:,2]**2)   #Transmission kz**2
+        Rkz2 = n_in**2-(k_out[:,1]**2+k_out[:,2]**2)    #Reflection kz**2
 
-        # if self.output_order:
-        #     T_mode = T_mode if self.output_order[0] == 'T' else np.full(T_mode.shape, -1) 
-        #     R_mode = R_mode if self.output_order[0] == 'R' else np.full(R_mode.shape, -1)
-        #     specify = np.all(mn_order==self.output_order[1:],axis = 1)
-        #     T_mode[~specify] = -1
-        #     R_mode[~specify] = -1
+        if self.output_order:
+            Tkz2 = Tkz2 if self.output_order[0] == 'T' else np.full(Tkz2.shape, -1) 
+            Rkz2 = Rkz2 if self.output_order[0] == 'R' else np.full(Rkz2.shape, -1)
+            specify = np.all(mn_order==self.output_order[1:],axis = 1)
+            Tkz2[~specify] = -1
+            Rkz2[~specify] = -1
 
         Rk_out, Tk_out = k_out[Rkz2>=0], k_out[Tkz2>0]
         Tk_out[:,3] = (z_direction[Tkz2>0]*np.sqrt(Tkz2[Tkz2>0]))
         Rk_out[:,3] = (-z_direction[Rkz2>=0]*np.sqrt(Rkz2[Rkz2>=0]))
         k_out = np.vstack((Rk_out, Tk_out))
 
+        #energy stokes vector
+        if output_option and k_out.size > 0 and hasattr(self,'parameters'):
+            num_R = np.sum(Rkz2>=0)
+            n_out = np.hstack((n_out[Rkz2>=0], n_out[Tkz2>0]))
+            n_in = np.hstack((n_in[Rkz2>=0], n_in[Tkz2>0]))
+            k_in = np.vstack((k_in[Rkz2>=0],k_in[Tkz2>0]))
+            matrix = self.simulator._estimate(self._k_to_rsoft(k_in))  #estimate Jones
+            matrix = np.vstack((matrix[:num_R,0],matrix[num_R:,1]))
+            matrix = jones_to_muller(matrix)
+            k_out[:,-4:] = np.real(np.einsum('ijk,ik->ij', matrix, k_out[:,-4:]))
+            if output_option == 2:  #power
+                ray_k2sp = rays_tool(input_format = 'k',output_format = 'sp')
+                theta_in = ray_k2sp.convert(k_in)[:,1]
+                theta_out = ray_k2sp.convert(k_out)[:,1]
+                power_factor = np.cos(np.deg2rad(theta_out))/np.cos(np.deg2rad(theta_in))
+                k_out[:,-4:] *= (np.hstack((n_in[:num_R],n_out[num_R:]))/n_in*power_factor)[:,np.newaxis]
+        
+        #combine same raypath
         if k_out.size > 0:
-            unique = np.unique(k_out[:,:-4],axis = 0)
             uni_k = []
-            for k in unique:
-                select = np.all(k_out[:,:-4] == k,axis = 1)
-                uni_k.append(np.hstack((k, np.sum(k_out[select,-4:],axis = 0))))
+            while k_out.size > 0:
+                select = np.all(k_out[:,:-4] == k_out[0,:-4],axis = 1)
+                uni_k.append(np.hstack((k_out[0,:-4], np.sum(k_out[select,-4:],axis = 0))))
                 k_out = k_out[~select]
             k_out = np.asarray(uni_k)
         return k_out
@@ -174,9 +191,22 @@ Air_coefficient = [0,0,0,0,0,0]
 LASF46B_coefficient = [2.17988922,0.306495184,1.56882437,0.012580538,0.056719137,105.316538]    #1.9
 Air = Material('Air',Air_coefficient)
 LASF46B = Material('LASF46B',LASF46B_coefficient)
-G1 = Grating([[0.3795,11]],[Air,LASF46B],hamonics = (1,0))
+G1 = Grating([[0.3795,11]],[Air,LASF46B],hamonics = (1,0),output_order = ('T',1,0))
 
 # %%
-k_in = np.asarray([[0.525,0,0,1,0,0,0,1,0,0,0],[0.525,0,0,1,0,0,0,1,0,0,0]])
+k_in = np.asarray([[0.525,0,0,1,0,0,0,1,1,0,0],[0.525,0,0,1,0,0,0,1,-1,0,0]])
 a = G1.launched(k_in)
+# %%
+import numpy as np
+
+arr = np.array([True, False, False, True, False, True, True, False, True, True, False, False])
+
+# 方法1: 使用 np.count_nonzero
+count_true_1 = np.count_nonzero(arr)
+print("方法1 中 True 的數量:", count_true_1)
+
+# 方法2: 使用 np.sum
+count_true_2 = np.sum(arr)
+print("方法2 中 True 的數量:", count_true_2)
+
 # %%

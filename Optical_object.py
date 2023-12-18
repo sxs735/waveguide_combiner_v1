@@ -457,11 +457,10 @@ class Grating:
                 k_out[:,-4:] *= (np.hstack((n1[~RorT],n2[RorT]))/n1*power_factor)[:,np.newaxis]
         #combine same raypath
         if k_out.size > 0:
-            unique = np.unique(k_out[:,:-4],axis = 0)
             uni_k = []
-            for k in unique:
-                select = np.all(k_out[:,:-4] == k,axis = 1)
-                uni_k.append(np.hstack((k, np.sum(k_out[select,-4:],axis = 0))))
+            while k_out.size > 0:
+                select = np.all(k_out[:,:-4] == k_out[0,:-4],axis = 1)
+                uni_k.append(np.hstack((k_out[0,:-4], np.sum(k_out[select,-4:],axis = 0))))
                 k_out = k_out[~select]
             k_out = np.asarray(uni_k)
         return k_out
