@@ -95,9 +95,9 @@ Air = Material('Air',Air_coefficient)
 LASF46B = Material('LASF46B',LASF46B_coefficient)
 NC = Material('nc',Nc_coefficient)
 
-source = Source([-38,11.53,1.5],-0.1,[-20,-20,15,15],[0.525], 
+source = Source([-38,11.53,1.5],-0.1,[-20,20,-15,15],[0.525], 
                 stokes_vector = [1,0,0,0],
-                fov_grid = (1,1),
+                fov_grid = (5,5),
                 spatial_grid = (3,3))
 
 G1 = Grating([[0.3795,11]],[Air,LASF46B],delta_order = (1,0))
@@ -120,7 +120,7 @@ system.add_element(20,None,np.array([[6,4.5],[-6,4.5],[-6,-4.5],[6,-4.5],[6,4.5]
 system.draw()
 # %%
 t0 = time.time()
-system.run(max_iter = 300,save_rays = True)
+system.run(max_iter = 300,save_rays = False)
 print(time.time()-t0)
 
 # %%

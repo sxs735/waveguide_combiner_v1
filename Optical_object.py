@@ -253,9 +253,9 @@ class Grating:
             for data in values:
                 data = tuple(data)
                 if data[1:-4] in self.dict_db:
-                    self.dict_db[data[1:-4]].update({data[-4:-2]: data[-2:]})
+                    self.dict_db[data[:-4]].update({data[-4:-2]: data[-2:]})
                 else:
-                    self.dict_db[data[1:-4]] = {data[-4:-2]: data[-2:]}
+                    self.dict_db[data[:-4]] = {data[-4:-2]: data[-2:]}
 
         def _compute(self,variable_list, save_to_db = False):
             commands = self._generate_cmd(variable_list)
