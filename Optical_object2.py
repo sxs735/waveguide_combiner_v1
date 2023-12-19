@@ -178,12 +178,58 @@ class Grating:
         
         #combine same raypath
         if k_out.size > 0:
-            uni_k = []
-            while k_out.size > 0:
-                select = np.all(k_out[:,:-4] == k_out[0,:-4],axis = 1)
-                uni_k.append(np.hstack((k_out[0,:-4], np.sum(k_out[select,-4:],axis = 0))))
-                k_out = k_out[~select]
-            k_out = np.asarray(uni_k)
+            unique, idx, counts = np.unique(k_out[:,:-4], axis = 0, return_index=True, return_counts = True)
+            overlap_rays = unique[counts>1]
+            if overlap_rays.size > 0:
+                k_unique = k_out[idx[counts==1]]
+                stoke_vector = [np.sum(k_out[np.all(k_out[:,:-4] == k,axis = 1),-4:],axis = 0) for k in overlap_rays]
+                k_out = np.vstack((k_unique,np.hstack((overlap_rays, stoke_vector))))
+        return k_out
+    
+class Fresnel_loss:
+    def __init__(self, index):
+        self.index = index
+
+    def _fresnel_k(self,n_in,n_out,k_in):
+        kx,ky,kz = k_in.astype(complex).T
+        kz = np.abs(kz)
+        SQRT = np.sqrt(n_out**2-(kx**2+ky**2))
+        rs = (kz-SQRT)/(kz+SQRT)
+        rp = (-n_out**2*kz+n_in**2*SQRT)/(n_out**2*kz+n_in**2*SQRT)
+        ts = 2*kz/(kz+SQRT)
+        tp = 2*n_out*n_in*kz/(n_out**2*kz+n_in**2*SQRT)
+        zero = np.zeros_like(rp)
+        r_matrix = np.array([[-rp,zero],[zero,rs]])
+        t_matrix = np.array([[ tp,zero],[zero,ts]])
+        return np.hstack((r_matrix,t_matrix)).T.reshape((-1,2,2,2))
+    
+    def launched(self,k_in,output_option = 0):
+        z_direction = np.where(k_in[:,3]>=0,1,-1)
+        n_out = np.where(z_direction==1,self.index[1](k_in[:,0]),self.index[0](k_in[:,0]))
+        n_in = np.where(z_direction==1,self.index[0](k_in[:,0]),self.index[1](k_in[:,0]))
+        Tkz2 = n_out**2-(k_in[:,1]**2+k_in[:,2]**2)
+        Rkz2 = n_in**2-(k_in[:,1]**2+k_in[:,2]**2)
+        Rk_out, Tk_out = k_in[Rkz2>=0], k_in[Tkz2>0]
+        Tk_out[:,3] = (z_direction[Tkz2>0]*np.sqrt(Tkz2[Tkz2>0]))
+        Rk_out[:,3] = (-z_direction[Rkz2>=0]*np.sqrt(Rkz2[Rkz2>=0]))
+        k_out = np.vstack((Rk_out,Tk_out))
+
+        #energy stokes vector
+        if output_option and k_out.size > 0:
+            num_R = np.sum(Rkz2>=0)
+            n_out = np.hstack((n_out[Rkz2>=0], n_out[Tkz2>0]))
+            n_in = np.hstack((n_in[Rkz2>=0], n_in[Tkz2>0]))
+            k_in = np.vstack((k_in[Rkz2>=0],k_in[Tkz2>0]))
+            matrix = self._fresnel_k(n_in,n_out,k_in[:,1:4])#estimate Jones
+            matrix = np.vstack((matrix[:num_R,0],matrix[num_R:,1]))
+            Jmatrix = jones_to_muller(matrix)
+            k_out[:,-4:] = np.real(np.einsum('ijk,ik->ij', Jmatrix, k_out[:,-4:]))
+            if output_option == 2:  #power
+                ray_k2sp = rays_tool(input_format = 'k',output_format = 'sp')
+                theta_in = ray_k2sp.convert(k_in)[:,1]
+                theta_out = ray_k2sp.convert(k_out)[:,1]
+                power_factor = np.cos(np.deg2rad(theta_out))/np.cos(np.deg2rad(theta_in))
+                k_out[:,-4:] *= (np.hstack((n_in[:num_R],n_out[num_R:]))/n_in*power_factor)[:,np.newaxis]
         return k_out
 
 # %%
@@ -191,22 +237,10 @@ Air_coefficient = [0,0,0,0,0,0]
 LASF46B_coefficient = [2.17988922,0.306495184,1.56882437,0.012580538,0.056719137,105.316538]    #1.9
 Air = Material('Air',Air_coefficient)
 LASF46B = Material('LASF46B',LASF46B_coefficient)
-G1 = Grating([[0.3795,11]],[Air,LASF46B],hamonics = (1,0),output_order = ('T',1,0))
+G1 = Grating([[0.3795,11]],[Air,LASF46B],hamonics = (1,0))#,output_order = ('T',1,0))
+F1 = Fresnel_loss([Air,LASF46B])
 
 # %%
 k_in = np.asarray([[0.525,0,0,1,0,0,0,1,1,0,0],[0.525,0,0,1,0,0,0,1,-1,0,0]])
 a = G1.launched(k_in)
-# %%
-import numpy as np
-
-arr = np.array([True, False, False, True, False, True, True, False, True, True, False, False])
-
-# 方法1: 使用 np.count_nonzero
-count_true_1 = np.count_nonzero(arr)
-print("方法1 中 True 的數量:", count_true_1)
-
-# 方法2: 使用 np.sum
-count_true_2 = np.sum(arr)
-print("方法2 中 True 的數量:", count_true_2)
-
-# %%
+#b = F1.launched(k_in)

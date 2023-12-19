@@ -457,12 +457,12 @@ class Grating:
                 k_out[:,-4:] *= (np.hstack((n1[~RorT],n2[RorT]))/n1*power_factor)[:,np.newaxis]
         #combine same raypath
         if k_out.size > 0:
-            uni_k = []
-            while k_out.size > 0:
-                select = np.all(k_out[:,:-4] == k_out[0,:-4],axis = 1)
-                uni_k.append(np.hstack((k_out[0,:-4], np.sum(k_out[select,-4:],axis = 0))))
-                k_out = k_out[~select]
-            k_out = np.asarray(uni_k)
+            unique, idx, counts = np.unique(k_out[:,:-4], axis = 0, return_index=True, return_counts = True)
+            overlap_rays = unique[counts>1]
+            if overlap_rays.size > 0:
+                k_unique = k_out[idx[counts==1]]
+                stoke_vector = [np.sum(k_out[np.all(k_out[:,:-4] == k,axis = 1),-4:],axis = 0) for k in overlap_rays]
+                k_out = np.vstack((k_unique,np.hstack((overlap_rays, stoke_vector))))
         return k_out
 
 class Fresnel_loss:
@@ -522,5 +522,3 @@ class Fresnel_loss:
                 power_factor = np.cos(np.deg2rad(theta_out))/np.cos(np.deg2rad(theta_in))
                 k_out[:,-4:] *= (np.hstack((n1[~RorT],n2[RorT]))/n1*power_factor)[:,np.newaxis]
         return k_out
-
-# %%
