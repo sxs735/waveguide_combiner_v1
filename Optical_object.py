@@ -118,43 +118,9 @@ class rays_tool:
             print('format error')
             return None
 
-class Source:
-    def __init__(self,shape,z,fov_box,wavelength_list,
-                 direction = 1, stokes_vector = [1,0,0,0],
-                 material = Material('Air',[0,0,0,0,0,0]),
-                 fov_grid = (5,5),
-                 spatial_grid = (3,3)):
-        shape = np.array(shape)
-        self.z = z
-        self.fov_box = np.asarray(fov_box)
-        self.wavelength_list = np.asarray(wavelength_list)
-        self.fgrid = np.asarray(fov_grid)
-        self.sgrid = np.asarray(spatial_grid)
-        self.material = material
-        self.stokes_vector = [stokes_vector]
-
-        #points
-        self.polygon = mpath.Path.circle(shape[:2], shape[2]) if shape.ndim == 1 else mpath.Path(shape)
-        self.range = np.vstack((self.polygon.vertices.min(axis = 0),self.polygon.vertices.max(axis = 0))).T
-        x,y = np.meshgrid(np.linspace(*self.range[0],self.sgrid[0]),np.linspace(*self.range[1],self.sgrid[1]))
-        self.points = np.vstack((x.reshape(-1),y.reshape(-1),z*np.ones_like(x.reshape(-1)))).T
-        mask = self.polygon.contains_points(self.points[:,:2], radius=1E-3)
-        self.points = self.points[mask]
-        #rays
-        h,v,w = np.meshgrid(np.linspace(*self.fov_box[:2],self.fgrid[0]),
-                            np.linspace(*self.fov_box[2:],self.fgrid[1]),
-                            self.wavelength_list)
-        self.rays = np.vstack((w.reshape(-1),h.reshape(-1),v.reshape(-1), direction*np.ones_like(h.reshape(-1)))).T
-
-    def launch(self):
-        k_rays = rays_tool(self.material)
-        k_rays = k_rays.convert(self.rays)
-        rays = np.hstack((k_rays.repeat(self.points.shape[0],axis = 0),np.tile(self.points,(k_rays.shape[0],1))))
-        rays = np.hstack((rays,np.repeat(self.stokes_vector,rays.shape[0],axis = 0)))
-        return rays
-
 class Grating:
     class Simulator:
+
         @staticmethod
         def rs_cmd(indfile, prefix, variable = {}, hide = True):
             '''output_setting is a dictionary
@@ -187,7 +153,7 @@ class Grating:
             for var in variable.keys():
                 variable_cmd += ' '+var+'='+'%.4f'%(variable[var])
             return basic_cmd + variable_cmd
-        
+            
         @staticmethod
         def count_decimal(number):
             number_str = str(number)
@@ -200,7 +166,6 @@ class Grating:
             self.symbols_base = ['rcwa_primary_direction','free_space_wavelength','launch_angle','launch_theta'],['INTEGER','REAL','REAL','REAL']
             self.symbols_values = ['order_m','order_n','r_matrix','t_matrix'],['INTEGER','INTEGER','BLOB','BLOB']
             self.symbols = symbols,['REAL']*len(symbols)
-
             self.hamonics = hamonics
 
         def _generate_cmd(self,variable_list):
@@ -225,15 +190,16 @@ class Grating:
             self.db = sqlite3.connect(db_name)
             self.cursor = self.db.cursor()
             self.cursor.execute(f'CREATE TABLE IF NOT EXISTS {self.table} (id INTEGER PRIMARY KEY, {set_column})')
-
+            
+            #{(rcwa_primary_direction,free_space_wavelength,launch_angle,launch_theta,*symbols): {(order_m,order_n): [r_matrix,t_matrix]}}
             self.dict_db = {}
             self.cursor.execute(f'SELECT * FROM {self.table}')
-            result = self.cursor.fetchall()
-            for data in result:
-                if data[1:-4] in self.dict_db:
-                    self.dict_db[data[1:-4]].update({data[-4:-2]: data[-2:]})
+            database = self.cursor.fetchall()
+            for row in database:
+                if row[1:-4] in self.dict_db:
+                    self.dict_db[row[1:-4]].update({row[-4:-2]: row[-2:]})
                 else:
-                    self.dict_db[data[1:-4]] = {data[-4:-2]: list(data[-2:])}
+                    self.dict_db[row[1:-4]] = {row[-4:-2]: list(row[-2:])}
 
         def _search_db(self,key):
             try:
@@ -250,12 +216,18 @@ class Grating:
             items_str = ','.join(items_str)
             self.cursor.executemany(f'INSERT INTO {self.table} ({items_str}) VALUES ({placeholders})', values)
             self.db.commit()
-            for data in values:
-                data = tuple(data)
-                if data[1:-4] in self.dict_db:
-                    self.dict_db[data[:-4]].update({data[-4:-2]: data[-2:]})
+            for row in values:
+                row = tuple(row)
+                if row[:-4] in self.dict_db:
+                    self.dict_db[row[:-4]].update({row[-4:-2]: row[-2:]})
                 else:
-                    self.dict_db[data[:-4]] = {data[-4:-2]: data[-2:]}
+                    self.dict_db[row[:-4]] = {row[-4:-2]: row[-2:]}
+
+        def _delete(self):
+            file_list = os.listdir()
+            for file_name in file_list:
+                if self.prefix in file_name:
+                    os.remove(file_name)
 
         def _compute(self,variable_list, save_to_db = False):
             commands = self._generate_cmd(variable_list)
@@ -297,11 +269,11 @@ class Grating:
                 s_ep_t = s_ep_t[mask]
                 s_es_t = s_es_t[mask]
 
-            
                 for j,mn in enumerate(order[mask]):
                     r_matrix = sqlite3.Binary(np.array([[p_ep_r[j],s_ep_r[j]],[p_es_r[j],s_es_r[j]]]).tobytes())
                     t_matrix = sqlite3.Binary(np.array([[p_ep_t[j],s_ep_t[j]],[p_es_t[j],s_es_t[j]]]).tobytes())
                     output += [[*var,int(mn[0]), int(mn[1]),r_matrix,t_matrix]]
+            
             self._delete()
             
             if save_to_db:
@@ -311,15 +283,9 @@ class Grating:
                 variable_list = np.asarray(variable_list)
                 indices = np.any(np.all(output[:, :-2][:, None, :].astype(float) == variable_list, axis=-1),axis = 1)
                 output = [[np.frombuffer(out[-2], dtype=np.complex128).reshape((2, 2)),
-                           np.frombuffer(out[-1], dtype=np.complex128).reshape((2, 2))] for out in output[indices]]
+                        np.frombuffer(out[-1], dtype=np.complex128).reshape((2, 2))] for out in output[indices]]
                 return np.asarray(output)
-
-        def _delete(self):
-            file_list = os.listdir()
-            for file_name in file_list:
-                if self.prefix in file_name:
-                    os.remove(file_name)
-
+            
         def _estimate(self, variables):
             #variables = [[direction,wavelength,theta, phi,*symbol,order_m,order_n]]
             variables = np.asarray(variables)
@@ -356,21 +322,21 @@ class Grating:
                 return np.asarray(grid_res).reshape((-1,2,2,2))
             else:
                 if variables.ndim <=1:
-                   variables = variables[np.newaxis,:]
+                    variables = variables[np.newaxis,:]
                 return self._compute(variables)
-
+            
         def _close_db(self):
             if hasattr(self,'db'):
                 self.db.close()
-                self.db.close
                 del self.db
 
-    def __init__(self, periods, index, delta_order = (1,1), specify_order = ()):
+
+    def __init__(self, periods, index, hamonics = (10,0), output_order = ()):
         self.index = index
-        delta_order = (delta_order[0],0) if np.asarray(periods).shape != (2,2) else delta_order
-        self.order = np.mgrid[-delta_order[0]:delta_order[0]+1, -delta_order[1]:delta_order[1]+1].reshape((2,-1))
+        add_order = (hamonics[0],0) if np.asarray(periods).shape != (2,2) else hamonics
+        self.order = np.mgrid[-add_order[0]:add_order[0]+1, -add_order[1]:add_order[1]+1].reshape((2,-1))
         self.periods = np.asarray(periods)
-        self.specify_order = specify_order
+        self.output_order = output_order
 
     def __setattr__(self, name, value):
         super().__setattr__(name, value)
@@ -379,6 +345,7 @@ class Grating:
                 self.periods = np.vstack((self.periods.reshape((1,2)),[np.inf,0]))
             g_phi = np.deg2rad(self.periods[:,1])
             self.g_vectors = (1/self.periods[:,0]*np.array([np.cos(g_phi),np.sin(g_phi)])).T
+            self.order_gv = self.order.T @ self.g_vectors
 
     def _set_simulator(self, indfile, prefix, z_direction, symbols, grid_size = (), db_name = '' , hamonics = (10,0)):
         self.simulator = self.Simulator(indfile, prefix, z_direction, symbols, hamonics = hamonics)
@@ -389,7 +356,7 @@ class Grating:
         self.parameters = parameters
         self.windows = windows
 
-    def _structure(self,position):
+    def _structure_values(self,position):
         def sigmoid(x):
             return 1 / (1 + np.exp(-4*x))
         values = []
@@ -398,63 +365,58 @@ class Grating:
                 poly = np.poly1d(p)
                 values += [(self.windows[i][1]-self.windows[i][0])*sigmoid(poly(position[:,0])) + self.windows[i][0]]
         values = np.array(values)
-        A =  values[0]/(values[1]*0.2772)
-        values[0][A>3] = 3*values[1][A>3]*0.2772
-        values[0][values[0]<0.05] = 0.05
         return values
-    
+
     def _k_to_rsoft(self,k_in):
-        #[direction,wavelength,theta, phi,*symbol,order_m,order_n]
+        #[direction, wavelength, theta, phi,*symbol, order_m, order_n]
         direction = np.where(k_in[:,3]>=0,*self.simulator.z_direction)
         ray_sp = rays_tool(input_format = 'k',output_format = 'sp')
         k_in_sp = ray_sp.convert(k_in)
         k_in_sp[:,2] -= self.periods[0,1]
-        symbol_values =  self._structure(k_in_sp[:,4:6])
+        symbol_values =  self._structure_values(k_in_sp[:,4:6])
         return np.vstack((direction,*np.round(k_in_sp[:,:4].T,4),*symbol_values,*k_in_sp[:,-2:].T)).T
 
-    def launched(self,k_in,specify_order = (), output_option = 0):
-        if specify_order:
-            self.specify_order = specify_order
+    def launched(self, k_in, output_option = 0):
         #k_in: [wavelength,kx,ky,kz,x,y,z,s0,s1,s2,s3]
-        order_gv = self.order.T @ self.g_vectors   #order*g_vector
-        k_in,order_gv,order = np.repeat(k_in,len(order_gv),axis = 0), np.tile(order_gv,(len(k_in),1)),  np.tile(self.order.T,(len(k_in),1))
-        dot_z = np.where(k_in[:,3]>0,1,-1)
-        n2 = np.where(dot_z==1,self.index[1](k_in[:,0]),self.index[0](k_in[:,0]))
-        n1 = np.where(dot_z==1,self.index[0](k_in[:,0]),self.index[1](k_in[:,0]))
+        k_in,order_gv, mn_order = np.repeat(k_in,len(self.order_gv),axis = 0), np.tile(self.order_gv,(len(k_in),1)),  np.tile(self.order.T,(len(k_in),1))
+        z_direction = np.where(k_in[:,3]>0,1,-1)
+        n_out = np.where(z_direction==1,self.index[1](k_in[:,0]),self.index[0](k_in[:,0]))
+        n_in = np.where(z_direction==1,self.index[0](k_in[:,0]),self.index[1](k_in[:,0]))
         k_out = deepcopy(k_in)
+        k_in = np.hstack((k_in,mn_order))
         k_out[:,1:3] += k_out[:,0:1]*order_gv   #k0 + order*wavelength*g_vector
-        T_mode = n2**2-(k_out[:,1]**2+k_out[:,2]**2)
-        R_mode = n1**2-(k_out[:,1]**2+k_out[:,2]**2)
-        if self.specify_order:
-            T_mode = T_mode if self.specify_order[0] == 'T' else np.full(T_mode.shape, -1) 
-            R_mode = R_mode if self.specify_order[0] == 'R' else np.full(R_mode.shape, -1)
-            specify = np.all(order==self.specify_order[1:],axis = 1)
-            T_mode[~specify] = -1
-            R_mode[~specify] = -1
-        Tk_out = k_out[T_mode>0]
-        T_order = order[T_mode>0]
-        Tk_out[:,3] = (dot_z[T_mode>0]*np.sqrt(T_mode[T_mode>0]))
-        Rk_out = k_out[R_mode>=0]
-        R_order = order[R_mode>=0]
-        Rk_out[:,3] = (-dot_z[R_mode>=0]*np.sqrt(R_mode[R_mode>=0]))
+        Tkz2 = n_out**2-(k_out[:,1]**2+k_out[:,2]**2)   #Transmission kz**2
+        Rkz2 = n_in**2-(k_out[:,1]**2+k_out[:,2]**2)    #Reflection kz**2
+
+        if self.output_order:
+            Tkz2 = Tkz2 if self.output_order[0] == 'T' else np.full(Tkz2.shape, -1) 
+            Rkz2 = Rkz2 if self.output_order[0] == 'R' else np.full(Rkz2.shape, -1)
+            specify = np.all(mn_order==self.output_order[1:],axis = 1)
+            Tkz2[~specify] = -1
+            Rkz2[~specify] = -1
+
+        Rk_out, Tk_out = k_out[Rkz2>=0], k_out[Tkz2>0]
+        Tk_out[:,3] = (z_direction[Tkz2>0]*np.sqrt(Tkz2[Tkz2>0]))
+        Rk_out[:,3] = (-z_direction[Rkz2>=0]*np.sqrt(Rkz2[Rkz2>=0]))
         k_out = np.vstack((Rk_out, Tk_out))
-        n2 = np.hstack((n2[R_mode>=0], n2[T_mode>0]))
-        n1 = np.hstack((n1[R_mode>=0], n1[T_mode>0]))
 
         #energy stokes vector
         if output_option and k_out.size > 0 and hasattr(self,'parameters'):
-            RorT = np.hstack((np.zeros(len(R_order)),np.ones(len(T_order)))).astype(bool)
-            k_in = np.hstack((np.vstack((k_in[R_mode>=0],k_in[T_mode>0])),np.vstack((R_order, T_order))))
+            num_R = np.sum(Rkz2>=0)
+            n_out = np.hstack((n_out[Rkz2>=0], n_out[Tkz2>0]))
+            n_in = np.hstack((n_in[Rkz2>=0], n_in[Tkz2>0]))
+            k_in = np.vstack((k_in[Rkz2>=0],k_in[Tkz2>0]))
             matrix = self.simulator._estimate(self._k_to_rsoft(k_in))  #estimate Jones
-            matrix = np.vstack((matrix[~RorT][:,0],matrix[RorT][:,1]))
+            matrix = np.vstack((matrix[:num_R,0],matrix[num_R:,1]))
             matrix = jones_to_muller(matrix)
             k_out[:,-4:] = np.real(np.einsum('ijk,ik->ij', matrix, k_out[:,-4:]))
-            if output_option == 2:
+            if output_option == 2:  #power
                 ray_k2sp = rays_tool(input_format = 'k',output_format = 'sp')
                 theta_in = ray_k2sp.convert(k_in)[:,1]
                 theta_out = ray_k2sp.convert(k_out)[:,1]
                 power_factor = np.cos(np.deg2rad(theta_out))/np.cos(np.deg2rad(theta_in))
-                k_out[:,-4:] *= (np.hstack((n1[~RorT],n2[RorT]))/n1*power_factor)[:,np.newaxis]
+                k_out[:,-4:] *= (np.hstack((n_in[:num_R],n_out[num_R:]))/n_in*power_factor)[:,np.newaxis]
+        
         #combine same raypath
         if k_out.size > 0:
             unique, idx, counts = np.unique(k_out[:,:-4], axis = 0, return_index=True, return_counts = True)
@@ -464,61 +426,64 @@ class Grating:
                 stoke_vector = [np.sum(k_out[np.all(k_out[:,:-4] == k,axis = 1),-4:],axis = 0) for k in overlap_rays]
                 k_out = np.vstack((k_unique,np.hstack((overlap_rays, stoke_vector))))
         return k_out
-
+    
 class Fresnel_loss:
     def __init__(self, index):
         self.index = index
 
-    def _fresnel_a(n1,n2,theta):
-        n = n2/n1
-        #theta = np.arcsin(np.sqrt(kx**2+ky**2)/n1).astype(complex)
-        rs = (np.cos(theta)-(n**2-np.sin(theta)**2)**0.5)/(np.cos(theta)+(n**2-np.sin(theta)**2)**0.5)
-        rp = (-n**2*np.cos(theta)+(n**2-np.sin(theta)**2)**0.5)/(n**2*np.cos(theta)+(n**2-np.sin(theta)**2)**0.5)
-        ts = 2*np.cos(theta)/(np.cos(theta)+(n**2-np.sin(theta)**2)**0.5)
-        tp = 2*n*np.cos(theta)/(n**2*np.cos(theta)+(n**2-np.sin(theta)**2)**0.5)
-        return rs,rp,ts,tp
-
-    def _fresnel_k(self,n1,n2,k_in):
+    def _fresnel_k(self,n_in,n_out,k_in):
         kx,ky,kz = k_in.astype(complex).T
         kz = np.abs(kz)
-        SQRT = np.sqrt(n2**2-(kx**2+ky**2))
+        SQRT = np.sqrt(n_out**2-(kx**2+ky**2))
         rs = (kz-SQRT)/(kz+SQRT)
-        rp = (-n2**2*kz+n1**2*SQRT)/(n2**2*kz+n1**2*SQRT)
+        rp = (-n_out**2*kz+n_in**2*SQRT)/(n_out**2*kz+n_in**2*SQRT)
         ts = 2*kz/(kz+SQRT)
-        tp = 2*n2*n1*kz/(n2**2*kz+n1**2*SQRT)
+        tp = 2*n_out*n_in*kz/(n_out**2*kz+n_in**2*SQRT)
         zero = np.zeros_like(rp)
         r_matrix = np.array([[-rp,zero],[zero,rs]])
         t_matrix = np.array([[ tp,zero],[zero,ts]])
         return np.hstack((r_matrix,t_matrix)).T.reshape((-1,2,2,2))
-
+    
     def launched(self,k_in,output_option = 0):
-        dot_z = np.where(k_in[:,3]>=0,1,-1)
-        n2 = np.where(dot_z==1,self.index[1](k_in[:,0]),self.index[0](k_in[:,0]))
-        n1 = np.where(dot_z==1,self.index[0](k_in[:,0]),self.index[1](k_in[:,0]))
-        Tkz = n2**2-(k_in[:,1]**2+k_in[:,2]**2)
-        Rkz = n1**2-(k_in[:,1]**2+k_in[:,2]**2)
-        T_mode = Tkz>0
-        R_mode = Tkz<=0
-        Tk_out = k_in[T_mode]
-        Rk_out = k_in[R_mode]
-        Tk_out[:,3] = (dot_z[T_mode]*np.sqrt(Tkz[T_mode]))
-        Rk_out[:,3] = (-dot_z[R_mode]*np.sqrt(Rkz[R_mode]))
+        z_direction = np.where(k_in[:,3]>=0,1,-1)
+        n_out = np.where(z_direction==1,self.index[1](k_in[:,0]),self.index[0](k_in[:,0]))
+        n_in = np.where(z_direction==1,self.index[0](k_in[:,0]),self.index[1](k_in[:,0]))
+        Tkz2 = n_out**2-(k_in[:,1]**2+k_in[:,2]**2)
+        Rkz2 = n_in**2-(k_in[:,1]**2+k_in[:,2]**2)
+        Rk_out, Tk_out = k_in[Rkz2>=0], k_in[Tkz2>0]
+        Tk_out[:,3] = (z_direction[Tkz2>0]*np.sqrt(Tkz2[Tkz2>0]))
+        Rk_out[:,3] = (-z_direction[Rkz2>=0]*np.sqrt(Rkz2[Rkz2>=0]))
         k_out = np.vstack((Rk_out,Tk_out))
 
         #energy stokes vector
         if output_option and k_out.size > 0:
-            RorT = np.hstack((np.zeros(len(Rk_out)),np.ones(len(Tk_out)))).astype(bool)
-            n2 = np.hstack((n2[R_mode],n2[T_mode]))
-            n1 = np.hstack((n1[R_mode],n1[T_mode]))
-            k_in = np.vstack((k_in[R_mode],k_in[T_mode]))
-            matrix = self._fresnel_k(n1,n2,k_in[:,1:4])#estimate Jones
-            matrix = np.vstack((matrix[~RorT][:,0],matrix[RorT][:,1]))
+            num_R = np.sum(Rkz2>=0)
+            n_out = np.hstack((n_out[Rkz2>=0], n_out[Tkz2>0]))
+            n_in = np.hstack((n_in[Rkz2>=0], n_in[Tkz2>0]))
+            k_in = np.vstack((k_in[Rkz2>=0],k_in[Tkz2>0]))
+            matrix = self._fresnel_k(n_in,n_out,k_in[:,1:4])#estimate Jones
+            matrix = np.vstack((matrix[:num_R,0],matrix[num_R:,1]))
             Jmatrix = jones_to_muller(matrix)
             k_out[:,-4:] = np.real(np.einsum('ijk,ik->ij', Jmatrix, k_out[:,-4:]))
-            if output_option == 2:
+            if output_option == 2:  #power
                 ray_k2sp = rays_tool(input_format = 'k',output_format = 'sp')
                 theta_in = ray_k2sp.convert(k_in)[:,1]
                 theta_out = ray_k2sp.convert(k_out)[:,1]
                 power_factor = np.cos(np.deg2rad(theta_out))/np.cos(np.deg2rad(theta_in))
-                k_out[:,-4:] *= (np.hstack((n1[~RorT],n2[RorT]))/n1*power_factor)[:,np.newaxis]
+                k_out[:,-4:] *= (np.hstack((n_in[:num_R],n_out[num_R:]))/n_in*power_factor)[:,np.newaxis]
         return k_out
+
+
+# Air_coefficient = [0,0,0,0,0,0]
+# LASF46B_coefficient = [2.17988922,0.306495184,1.56882437,0.012580538,0.056719137,105.316538]    #1.9
+# Air = Material('Air',Air_coefficient)
+# LASF46B = Material('LASF46B',LASF46B_coefficient)
+# G1 = Grating([[0.3795,11]],[Air,LASF46B],hamonics = (1,0),output_order = ('T',1,0))
+# G1._set_simulator('binary_R', 'temp', [5,4], ['height','duty'], grid_size = (0.01,0.05), db_name = 'DB_binary.db')
+# G1._set_structure([[0],[0]],[[0.02,0.9],[0.2,0.8]])
+# F1 = Fresnel_loss([Air,LASF46B])
+
+# k_in = np.asarray([[0.525,0,0,1,0,0,0,1,1,0,0],[0.525,0,0,1,0,0,0,1,-1,0,0]])
+# a = G1.launched(k_in,output_option = 2)
+# b = F1.launched(k_in)
+
