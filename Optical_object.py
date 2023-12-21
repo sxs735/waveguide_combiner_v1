@@ -331,12 +331,11 @@ class Grating:
                 del self.db
 
 
-    def __init__(self, periods, index, hamonics = (10,0), output_order = ()):
+    def __init__(self, periods, index, hamonics = (10,0)):
         self.index = index
         add_order = (hamonics[0],0) if np.asarray(periods).shape != (2,2) else hamonics
         self.order = np.mgrid[-add_order[0]:add_order[0]+1, -add_order[1]:add_order[1]+1].reshape((2,-1))
         self.periods = np.asarray(periods)
-        self.output_order = output_order
 
     def __setattr__(self, name, value):
         super().__setattr__(name, value)
@@ -378,7 +377,7 @@ class Grating:
         symbol_values =  self._structure_values(k_in_sp[:,4:6])
         return np.vstack((direction,*np.round(k_in_sp[:,:4].T,4),*symbol_values,*k_in_sp[:,-2:].T)).T
 
-    def launched(self, k_in, output_option = 0):
+    def launched(self, k_in, output_order = (), output_option = 0):
         #k_in: [wavelength,kx,ky,kz,x,y,z,s0,s1,s2,s3]
         k_in,order_gv, mn_order = np.repeat(k_in,len(self.order_gv),axis = 0), np.tile(self.order_gv,(len(k_in),1)),  np.tile(self.order.T,(len(k_in),1))
         z_direction = np.where(k_in[:,3]>0,1,-1)
@@ -390,10 +389,10 @@ class Grating:
         Tkz2 = n_out**2-(k_out[:,1]**2+k_out[:,2]**2)   #Transmission kz**2
         Rkz2 = n_in**2-(k_out[:,1]**2+k_out[:,2]**2)    #Reflection kz**2
 
-        if self.output_order:
-            Tkz2 = Tkz2 if self.output_order[0] == 'T' else np.full(Tkz2.shape, -1) 
-            Rkz2 = Rkz2 if self.output_order[0] == 'R' else np.full(Rkz2.shape, -1)
-            specify = np.all(mn_order==self.output_order[1:],axis = 1)
+        if output_order:
+            Tkz2 = Tkz2 if output_order[0] == 'T' else np.full(Tkz2.shape, -1) 
+            Rkz2 = Rkz2 if output_order[0] == 'R' else np.full(Rkz2.shape, -1)
+            specify = np.all(mn_order==output_order[1:],axis = 1)
             Tkz2[~specify] = -1
             Rkz2[~specify] = -1
 
