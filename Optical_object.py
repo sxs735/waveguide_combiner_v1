@@ -118,6 +118,41 @@ class rays_tool:
             print('format error')
             return None
 
+class Source:
+    def __init__(self,shape,z,fov_box,wavelength_list,
+                 direction = 1, stokes_vector = [1,0,0,0],
+                 material = Material('Air',[0,0,0,0,0,0]),
+                 fov_grid = (5,5),
+                 spatial_grid = (3,3)):
+        shape = np.array(shape)
+        self.z = z
+        self.fov_box = np.asarray(fov_box)
+        self.wavelength_list = np.asarray(wavelength_list)
+        self.fgrid = np.asarray(fov_grid)
+        self.sgrid = np.asarray(spatial_grid)
+        self.material = material
+        self.stokes_vector = [stokes_vector]
+
+        #points
+        self.polygon = mpath.Path.circle(shape[:2], shape[2]) if shape.ndim == 1 else mpath.Path(shape)
+        self.range = np.vstack((self.polygon.vertices.min(axis = 0),self.polygon.vertices.max(axis = 0))).T
+        x,y = np.meshgrid(np.linspace(*self.range[0],self.sgrid[0]),np.linspace(*self.range[1],self.sgrid[1]))
+        self.points = np.vstack((x.reshape(-1),y.reshape(-1),z*np.ones_like(x.reshape(-1)))).T
+        mask = self.polygon.contains_points(self.points[:,:2], radius=1E-3)
+        self.points = self.points[mask]
+        #rays
+        h,v,w = np.meshgrid(np.linspace(*self.fov_box[:2],self.fgrid[0]),
+                            np.linspace(*self.fov_box[2:],self.fgrid[1]),
+                            self.wavelength_list)
+        self.rays = np.vstack((w.reshape(-1),h.reshape(-1),v.reshape(-1), direction*np.ones_like(h.reshape(-1)))).T
+
+    def launch(self):
+        k_rays = rays_tool(self.material)
+        k_rays = k_rays.convert(self.rays)
+        rays = np.hstack((k_rays.repeat(self.points.shape[0],axis = 0),np.tile(self.points,(k_rays.shape[0],1))))
+        rays = np.hstack((rays,np.repeat(self.stokes_vector,rays.shape[0],axis = 0)))
+        return rays
+
 class Grating:
     class Simulator:
 
@@ -331,9 +366,9 @@ class Grating:
                 del self.db
 
 
-    def __init__(self, periods, index, hamonics = (10,0)):
+    def __init__(self, periods, index, add_order = (1,0)):
         self.index = index
-        add_order = (hamonics[0],0) if np.asarray(periods).shape != (2,2) else hamonics
+        add_order = (add_order[0],0) if np.asarray(periods).shape != (2,2) else add_order
         self.order = np.mgrid[-add_order[0]:add_order[0]+1, -add_order[1]:add_order[1]+1].reshape((2,-1))
         self.periods = np.asarray(periods)
 
@@ -424,7 +459,10 @@ class Grating:
             overlap_rays = unique[counts>1]
             if overlap_rays.size > 0:
                 k_unique = k_out[idx[counts==1]]
-                stoke_vector = [np.sum(k_out[np.all(k_out[:,:-4] == k,axis = 1),-4:],axis = 0) for k in overlap_rays]
+                if output_option:
+                    stoke_vector = [np.sum(k_out[np.all(k_out[:,:-4] == k,axis = 1),-4:],axis = 0) for k in overlap_rays]
+                else:
+                    stoke_vector = [[1,0,0,0]]*len(overlap_rays)
                 k_out = np.vstack((k_unique,np.hstack((overlap_rays, stoke_vector))))
         return k_out
     
@@ -451,17 +489,17 @@ class Fresnel_loss:
         n_in = np.where(z_direction==1,self.index[0](k_in[:,0]),self.index[1](k_in[:,0]))
         Tkz2 = n_out**2-(k_in[:,1]**2+k_in[:,2]**2)
         Rkz2 = n_in**2-(k_in[:,1]**2+k_in[:,2]**2)
-        Rk_out, Tk_out = k_in[Rkz2>=0], k_in[Tkz2>0]
+        Rk_out, Tk_out = k_in[Tkz2<=0], k_in[Tkz2>0]
         Tk_out[:,3] = (z_direction[Tkz2>0]*np.sqrt(Tkz2[Tkz2>0]))
-        Rk_out[:,3] = (-z_direction[Rkz2>=0]*np.sqrt(Rkz2[Rkz2>=0]))
+        Rk_out[:,3] = (-z_direction[Tkz2<=0]*np.sqrt(Rkz2[Tkz2<=0]))
         k_out = np.vstack((Rk_out,Tk_out))
 
         #energy stokes vector
         if output_option and k_out.size > 0:
-            num_R = np.sum(Rkz2>=0)
-            n_out = np.hstack((n_out[Rkz2>=0], n_out[Tkz2>0]))
-            n_in = np.hstack((n_in[Rkz2>=0], n_in[Tkz2>0]))
-            k_in = np.vstack((k_in[Rkz2>=0],k_in[Tkz2>0]))
+            num_R = np.sum(Tkz2<=0)
+            n_out = np.hstack((n_out[Tkz2<=0], n_out[Tkz2>0]))
+            n_in = np.hstack((n_in[Tkz2<=0], n_in[Tkz2>0]))
+            k_in = np.vstack((k_in[Tkz2<=0],k_in[Tkz2>0]))
             matrix = self._fresnel_k(n_in,n_out,k_in[:,1:4])#estimate Jones
             matrix = np.vstack((matrix[:num_R,0],matrix[num_R:,1]))
             Jmatrix = jones_to_muller(matrix)
@@ -474,6 +512,13 @@ class Fresnel_loss:
                 k_out[:,-4:] *= (np.hstack((n_in[:num_R],n_out[num_R:]))/n_in*power_factor)[:,np.newaxis]
         return k_out
 
+class Receiver:
+    def __init__(self):
+        self.store = []
+
+    def launched(self, k_in):
+        self.store += [k_in]
+        return np.empty((0, 11))
 
 # Air_coefficient = [0,0,0,0,0,0]
 # LASF46B_coefficient = [2.17988922,0.306495184,1.56882437,0.012580538,0.056719137,105.316538]    #1.9
@@ -487,4 +532,3 @@ class Fresnel_loss:
 # k_in = np.asarray([[0.525,0,0,1,0,0,0,1,1,0,0],[0.525,0,0,1,0,0,0,1,-1,0,0]])
 # a = G1.launched(k_in,output_option = 2)
 # b = F1.launched(k_in)
-

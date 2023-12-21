@@ -1,9 +1,8 @@
 #%%
 import numpy as np
 import matplotlib.path as mpath
-from Optical_object_old import *
+from Optical_object import *
 import open3d as o3d
-import open3d.visualization.rendering as rendering
 import time
 
 class System:
@@ -27,9 +26,8 @@ class System:
         if hasattr(self,'source'):
             k_rays = self.source.launch()
             z_layer = np.asarray(list(self.layers.keys()))
-            #for k_rays_i in k_rays:
-            #k_rays_i = k_rays_i[np.newaxis,:]
             for num in range(max_iter):
+                #print(num,len(k_rays))
                 index = np.sqrt(np.sum(k_rays[:,1:4]**2,axis = 1))
                 direction_cosine = k_rays[:,1:4]/index[:,np.newaxis]
                 delta_z = z_layer-k_rays[:,6:7]
@@ -55,11 +53,12 @@ class System:
                     k_rays = k_rays[np.round(k_rays[:,6],6) != z]
                     for element in self.layers[z]:
                         mask = element[1].contains_points(on_layer_kray[:,4:6],radius=1E-3)
-                        if element[0]:
+                        if element[0] and np.sum(mask)>0:
                             next_krays += [element[0].launched(on_layer_kray[mask])]
                         on_layer_kray = on_layer_kray[~mask]
-                k_rays = np.vstack(next_krays)
-                if len(k_rays)==0:
+                if next_krays:
+                    k_rays = np.vstack(next_krays)
+                else:
                     break
                     
 
@@ -86,51 +85,3 @@ class System:
         boundary = o3d.cpu.pybind.geometry.PointCloud(o3d.utility.Vector3dVector(boundary)).get_axis_aligned_bounding_box()
         g_list += [o3d.geometry.LineSet.create_from_axis_aligned_bounding_box(boundary)]
         o3d.visualization.draw_geometries(self.lineset + g_list)
-
-
-#%%
-Air_coefficient = [0,0,0,0,0,0]
-LASF46B_coefficient = [2.17988922,0.306495184,1.56882437,0.012580538,0.056719137,105.316538]    #1.9
-SF69_coefficient = [1.62594647,0.235927609,1.674346230,0.01216966770,0.0600710405,145.6519080]  #1.7
-Nc_coefficient = [1.9**2-1,0,0,0,0,0]
-Air = Material('Air',Air_coefficient)
-LASF46B = Material('LASF46B',LASF46B_coefficient)
-NC = Material('nc',Nc_coefficient)
-
-source = Source([-38,11.53,1],-0.1,[0,0,0,0],[0.525], 
-                stokes_vector = [1,0,0,0],
-                fov_grid = (1,1),
-                spatial_grid = (5,5))
-
-G1 = Grating([[0.3795,11]],[Air,LASF46B],delta_order = (1,0))
-G2 = Grating([[0.2772,-122.2]],[Air,LASF46B],delta_order = (1,0))
-G3 = Grating([[0.3795,104.6]],[Air,LASF46B],delta_order = (1,0))
-F1 = Fresnel_loss([Air,LASF46B])
-F2 = Fresnel_loss([LASF46B,Air])
-
-#%%
-system = System(Air)
-system.add_source(source)
-system.add_element(0,G1,np.array([-38,11.53,1.5]))
-system.add_element(0,G2,np.array([[13.24,27.875],[-8.81396,27.875],[-30.2654,17.0954],[-25.8143,10.03],[13.24,10.03],[13.24,27.875]]))
-system.add_element(0,G3,np.array([[13.24,9.93],[-13.24,9.93],[-13.24,-9.93],[13.24,-9.93],[13.24,9.93]]))
-system.add_element(0,F1,np.array([[14.62,28.76],[-40.38,28.76],[-40.38,-11.24],[14.62,-11.24],[14.62,28.76]]))
-system.add_element(1,F2,np.array([[14.62,28.76],[-40.38,28.76],[-40.38,-11.24],[14.62,-11.24],[14.62,28.76]]))
-system.add_element(-20,None,np.array([[6,4.5],[-6,4.5],[-6,-4.5],[6,-4.5],[6,4.5]]))
-#system.add_element(20,None,np.array([[6,4.5],[-6,4.5],[-6,-4.5],[6,-4.5],[6,4.5]]))
-# %%
-system.draw()
-# %%
-t0 = time.time()
-system.run(max_iter = 300,save_rays = True)
-print(time.time()-t0)
-
-# %%
-kin = source.launch()[2:3]
-k1 = G1.launched(kin)
-F2.launched(np.array(k1))
-
-# %%
-for i in system.lineset:
-    print(np.asarray(i.points))
-# %%
