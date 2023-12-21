@@ -388,15 +388,17 @@ class Grating:
         self.parameters = parameters
         self.windows = windows
 
-    def _structure(self,position):
+    def _structure(self,position, constant = False):
         def sigmoid(x):
             return 1 / (1 + np.exp(-4*x))
         values = []
-        if hasattr(self,'parameters'):
+        if hasattr(self,'parameters') and constant:
             for i,p in enumerate(self.parameters):
                 poly = np.poly1d(p)
                 values += [(self.windows[i][1]-self.windows[i][0])*sigmoid(poly(position[:,0])) + self.windows[i][0]]
-        values = np.array(values)
+            values = np.array(values)
+        else:
+            values = np.array([self.parameters]*len(position[:,0])).T
         return values
     
     def _k_to_rsoft(self,k_in):
