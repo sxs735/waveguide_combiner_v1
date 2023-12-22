@@ -138,8 +138,11 @@ class Source:
         self.range = np.vstack((self.polygon.vertices.min(axis = 0),self.polygon.vertices.max(axis = 0))).T
         x,y = np.meshgrid(np.linspace(*self.range[0],self.sgrid[0]),np.linspace(*self.range[1],self.sgrid[1]))
         self.points = np.vstack((x.reshape(-1),y.reshape(-1),z*np.ones_like(x.reshape(-1)))).T
-        mask = self.polygon.contains_points(self.points[:,:2], radius=1E-3)
-        self.points = self.points[mask]
+        if len(self.points) == 1 and shape.ndim == 1 and shape[2] == 0:
+            pass
+        else:
+            mask = self.polygon.contains_points(self.points[:,:2], radius=1E-3)
+            self.points = self.points[mask]
         #rays
         h,v,w = np.meshgrid(np.linspace(*self.fov_box[:2],self.fgrid[0]),
                             np.linspace(*self.fov_box[2:],self.fgrid[1]),

@@ -11,9 +11,9 @@ Air = Material('Air',Air_coefficient)
 LASF46B = Material('LASF46B',LASF46B_coefficient)
 NC = Material('nc',Nc_coefficient)
 
-source = Source([-38,11.53,1],-0.1,[-20,20,-15,15],[0.525], 
+source = Source([-38,11.53,1],-1E-9,[20,20,15,15],[0.525], 
                 stokes_vector = [1,0,0,0],
-                fov_grid = (5,5),
+                fov_grid = (1,1),
                 spatial_grid = (7,7))
 
 G1 = Grating([[0.3795,11]],[Air,LASF46B], add_order = (1,0))
