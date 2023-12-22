@@ -36,7 +36,7 @@ system.add_element(-20,R1,np.array([[6,4.5],[-6,4.5],[-6,-4.5],[6,-4.5],[6,4.5]]
 
 # %%
 t0 = time.time()
-system.run(max_iter = 300,save_rays = False)
+system.run(max_iter = 300,save_rays = True)
 print(time.time()-t0)
 
 #%%
