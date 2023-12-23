@@ -27,7 +27,7 @@ class System:
             k_rays = self.source.launch()
             z_layer = np.asarray(list(self.layers.keys()))
             for num in range(max_iter):
-                #print(num,len(k_rays))
+                print(num,len(k_rays))
                 index = np.sqrt(np.sum(k_rays[:,1:4]**2,axis = 1))
                 direction_cosine = k_rays[:,1:4]/index[:,np.newaxis]
                 delta_z = z_layer-k_rays[:,6:7]
@@ -59,12 +59,13 @@ class System:
                     
 
     def draw(self):
-        lines = np.vstack(self.lineset)
-        p1 = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(lines[:,:,0]))
-        p2= o3d.geometry.PointCloud(o3d.utility.Vector3dVector(lines[:,:,1]))
-        idx = np.vstack((np.arange(len(lines)),np.arange(len(lines)))).T.tolist()#[(i,i) for i in np.arange(len(lines))]
-        self.lineset = o3d.geometry.LineSet.create_from_point_cloud_correspondences(p1,p2,idx)
-        self.lineset.paint_uniform_color([1,0,0])
+        if self.lineset:
+            lines = np.vstack(self.lineset)
+            p1 = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(lines[:,:,0]))
+            p2= o3d.geometry.PointCloud(o3d.utility.Vector3dVector(lines[:,:,1]))
+            idx = np.vstack((np.arange(len(lines)),np.arange(len(lines)))).T.tolist()#[(i,i) for i in np.arange(len(lines))]
+            self.lineset = o3d.geometry.LineSet.create_from_point_cloud_correspondences(p1,p2,idx)
+            self.lineset.paint_uniform_color([1,0,0])
 
         mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=5, origin=self.boundary.min(axis = 1))
         g_list = [mesh_frame]
@@ -87,6 +88,10 @@ class System:
         boundary = np.vstack((x.reshape(-1),y.reshape(-1),z.reshape(-1))).reshape((-1,3))
         boundary = o3d.cpu.pybind.geometry.PointCloud(o3d.utility.Vector3dVector(boundary)).get_axis_aligned_bounding_box()
         g_list += [o3d.geometry.LineSet.create_from_axis_aligned_bounding_box(boundary)]
-        o3d.visualization.draw_geometries([self.lineset] + g_list)
+        if self.lineset:
+            o3d.visualization.draw_geometries([self.lineset] + g_list)
+        else:
+            o3d.visualization.draw_geometries(g_list)
+        self.lineset = []
 
 # %%

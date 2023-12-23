@@ -123,7 +123,7 @@ class Source:
                  direction = 1, stokes_vector = [1,0,0,0],
                  material = Material('Air',[0,0,0,0,0,0]),
                  fov_grid = (5,5),
-                 spatial_grid = (3,3)):
+                 spatial_grid = (3,3),shrink = 1E-3):
         shape = np.array(shape)
         self.z = z
         self.fov_box = np.asarray(fov_box)
@@ -132,10 +132,11 @@ class Source:
         self.sgrid = np.asarray(spatial_grid)
         self.material = material
         self.stokes_vector = [stokes_vector]
+        self.shrink = 0 if shape.ndim == 1 else shrink 
 
         #points
         self.polygon = mpath.Path.circle(shape[:2], shape[2]) if shape.ndim == 1 else mpath.Path(shape)
-        self.range = np.vstack((self.polygon.vertices.min(axis = 0),self.polygon.vertices.max(axis = 0))).T
+        self.range = np.vstack((self.polygon.vertices.min(axis = 0)+self.shrink,self.polygon.vertices.max(axis = 0)-self.shrink)).T
         x,y = np.meshgrid(np.linspace(*self.range[0],self.sgrid[0]),np.linspace(*self.range[1],self.sgrid[1]))
         self.points = np.vstack((x.reshape(-1),y.reshape(-1),z*np.ones_like(x.reshape(-1)))).T
         if len(self.points) == 1 and shape.ndim == 1 and shape[2] == 0:
@@ -153,7 +154,7 @@ class Source:
         k_rays = rays_tool(self.material)
         k_rays = k_rays.convert(self.rays)
         rays = np.hstack((k_rays.repeat(self.points.shape[0],axis = 0),np.tile(self.points,(k_rays.shape[0],1))))
-        rays = np.hstack((rays,np.repeat(self.stokes_vector,rays.shape[0],axis = 0)))
+        rays = np.hstack((rays,np.repeat(self.stokes_vector/rays.shape[0],rays.shape[0],axis = 0)))
         return rays
 
 class Grating:
@@ -535,3 +536,5 @@ class Receiver:
 # k_in = np.asarray([[0.525,0,0,1,0,0,0,1,1,0,0],[0.525,0,0,1,0,0,0,1,-1,0,0]])
 # a = G1.launched(k_in,output_option = 2)
 # b = F1.launched(k_in)
+
+# %%
