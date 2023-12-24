@@ -154,7 +154,7 @@ class Source:
         k_rays = rays_tool(self.material)
         k_rays = k_rays.convert(self.rays)
         rays = np.hstack((k_rays.repeat(self.points.shape[0],axis = 0),np.tile(self.points,(k_rays.shape[0],1))))
-        rays = np.hstack((rays,np.repeat(self.stokes_vector/rays.shape[0],rays.shape[0],axis = 0)))
+        rays = np.hstack((rays,np.repeat(self.stokes_vector,rays.shape[0],axis = 0)/rays.shape[0]))
         return rays
 
 class Grating:
@@ -370,10 +370,12 @@ class Grating:
                 del self.db
 
 
-    def __init__(self, periods, index, add_order = (1,0)):
+    def __init__(self, periods, index, add_order = (1,0), output_order = [], output_option = 0):
         self.index = index
         add_order = (add_order[0],0) if np.asarray(periods).shape != (2,2) else add_order
         self.order = np.mgrid[-add_order[0]:add_order[0]+1, -add_order[1]:add_order[1]+1].reshape((2,-1))
+        self.output_order = output_order 
+        self.output_option = output_option
         self.periods = np.asarray(periods)
 
     def __setattr__(self, name, value):
@@ -416,7 +418,7 @@ class Grating:
         symbol_values =  self._structure_values(k_in_sp[:,4:6])
         return np.vstack((direction,*np.round(k_in_sp[:,:4].T,4),*symbol_values,*k_in_sp[:,-2:].T)).T
 
-    def launched(self, k_in, output_order = (), output_option = 0):
+    def launched(self, k_in):
         #k_in: [wavelength,kx,ky,kz,x,y,z,s0,s1,s2,s3]
         k_in,order_gv, mn_order = np.repeat(k_in,len(self.order_gv),axis = 0), np.tile(self.order_gv,(len(k_in),1)),  np.tile(self.order.T,(len(k_in),1))
         z_direction = np.where(k_in[:,3]>0,1,-1)
@@ -428,12 +430,17 @@ class Grating:
         Tkz2 = n_out**2-(k_out[:,1]**2+k_out[:,2]**2)   #Transmission kz**2
         Rkz2 = n_in**2-(k_out[:,1]**2+k_out[:,2]**2)    #Reflection kz**2
 
-        if output_order:
-            Tkz2 = Tkz2 if output_order[0] == 'T' else np.full(Tkz2.shape, -1) 
-            Rkz2 = Rkz2 if output_order[0] == 'R' else np.full(Rkz2.shape, -1)
-            specify = np.all(mn_order==output_order[1:],axis = 1)
-            Tkz2[~specify] = -1
-            Rkz2[~specify] = -1
+        if self.output_order:
+            survived = [] 
+            for condition in self.output_order:
+                z_direct, mode, m, n = condition
+                direction = z_direction == z_direct
+                RorT = Rkz2>=0 if mode == 'R' else Tkz2>0
+                mn = np.all(mn_order==[m,n],axis = 1)
+                survived += [np.all(np.vstack((direction,RorT,mn)),axis = 0)]
+            survived = np.any(np.vstack(survived),axis = 0)
+            Rkz2[~survived] = -1
+            Tkz2[~survived] = -1
 
         Rk_out, Tk_out = k_out[Rkz2>=0], k_out[Tkz2>0]
         Tk_out[:,3] = (z_direction[Tkz2>0]*np.sqrt(Tkz2[Tkz2>0]))
@@ -441,7 +448,7 @@ class Grating:
         k_out = np.vstack((Rk_out, Tk_out))
 
         #energy stokes vector
-        if output_option and k_out.size > 0 and hasattr(self,'parameters'):
+        if self.output_option and k_out.size > 0 and hasattr(self,'parameters'):
             num_R = np.sum(Rkz2>=0)
             n_out = np.hstack((n_out[Rkz2>=0], n_out[Tkz2>0]))
             n_in = np.hstack((n_in[Rkz2>=0], n_in[Tkz2>0]))
@@ -450,7 +457,7 @@ class Grating:
             matrix = np.vstack((matrix[:num_R,0],matrix[num_R:,1]))
             matrix = jones_to_muller(matrix)
             k_out[:,-4:] = np.real(np.einsum('ijk,ik->ij', matrix, k_out[:,-4:]))
-            if output_option == 2:  #power
+            if self.output_option == 2:  #power
                 ray_k2sp = rays_tool(input_format = 'k',output_format = 'sp')
                 theta_in = ray_k2sp.convert(k_in)[:,1]
                 theta_out = ray_k2sp.convert(k_out)[:,1]
@@ -463,7 +470,7 @@ class Grating:
             overlap_rays = unique[counts>1]
             if overlap_rays.size > 0:
                 k_unique = k_out[idx[counts==1]]
-                if output_option:
+                if self.output_option:
                     stoke_vector = [np.sum(k_out[np.all(k_out[:,:-4] == k,axis = 1),-4:],axis = 0) for k in overlap_rays]
                 else:
                     stoke_vector = [[1,0,0,0]]*len(overlap_rays)
@@ -523,18 +530,3 @@ class Receiver:
     def launched(self, k_in):
         self.store += [k_in]
         return np.empty((0, 11))
-
-# Air_coefficient = [0,0,0,0,0,0]
-# LASF46B_coefficient = [2.17988922,0.306495184,1.56882437,0.012580538,0.056719137,105.316538]    #1.9
-# Air = Material('Air',Air_coefficient)
-# LASF46B = Material('LASF46B',LASF46B_coefficient)
-# G1 = Grating([[0.3795,11]],[Air,LASF46B],hamonics = (1,0),output_order = ('T',1,0))
-# G1._set_simulator('binary_R', 'temp', [5,4], ['height','duty'], grid_size = (0.01,0.05), db_name = 'DB_binary.db')
-# G1._set_structure([[0],[0]],[[0.02,0.9],[0.2,0.8]])
-# F1 = Fresnel_loss([Air,LASF46B])
-
-# k_in = np.asarray([[0.525,0,0,1,0,0,0,1,1,0,0],[0.525,0,0,1,0,0,0,1,-1,0,0]])
-# a = G1.launched(k_in,output_option = 2)
-# b = F1.launched(k_in)
-
-# %%

@@ -16,7 +16,12 @@ source = Source([-38,11.53,1.45],-0.1,[-20,20,-15,15],[0.525],
                 fov_grid = (5,5),
                 spatial_grid = (7,7))
 
-G1 = Grating([[0.3795,11]],[Air,LASF46B], add_order = (1,0))
+# source = Source([-38,11.53,0],-0.1,[0,0,0,0],[0.525], 
+#                 stokes_vector = [1,0,0,0],
+#                 fov_grid = (1,1),
+#                 spatial_grid = (1,1))
+
+G1 = Grating([[0.3795,11]],[Air,LASF46B], add_order = (1,0), output_order = [[1,'T',1,0],[-1,'R',0,0]])
 F2 = Fresnel_loss([LASF46B,Air])
 R1 = Receiver()
 
