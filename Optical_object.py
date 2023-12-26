@@ -370,7 +370,7 @@ class Grating:
                 del self.db
 
 
-    def __init__(self, periods, index, add_order = (1,0), output_order = [], output_option = 0):
+    def __init__(self, periods, index, add_order = (1,0), output_order = [], output_option = [0,0,0]):
         self.index = index
         add_order = (add_order[0],0) if np.asarray(periods).shape != (2,2) else add_order
         self.order = np.mgrid[-add_order[0]:add_order[0]+1, -add_order[1]:add_order[1]+1].reshape((2,-1))
@@ -448,7 +448,7 @@ class Grating:
         k_out = np.vstack((Rk_out, Tk_out))
 
         #energy stokes vector
-        if self.output_option and k_out.size > 0 and hasattr(self,'parameters'):
+        if self.output_option[0] and k_out.size > 0 and hasattr(self,'parameters'):
             num_R = np.sum(Rkz2>=0)
             n_out = np.hstack((n_out[Rkz2>=0], n_out[Tkz2>0]))
             n_in = np.hstack((n_in[Rkz2>=0], n_in[Tkz2>0]))
@@ -457,29 +457,31 @@ class Grating:
             matrix = np.vstack((matrix[:num_R,0],matrix[num_R:,1]))
             matrix = jones_to_muller(matrix)
             k_out[:,-4:] = np.real(np.einsum('ijk,ik->ij', matrix, k_out[:,-4:]))
-            if self.output_option == 2:  #power
-                ray_k2sp = rays_tool(input_format = 'k',output_format = 'sp')
-                theta_in = ray_k2sp.convert(k_in)[:,1]
-                theta_out = ray_k2sp.convert(k_out)[:,1]
-                power_factor = np.cos(np.deg2rad(theta_out))/np.cos(np.deg2rad(theta_in))
-                k_out[:,-4:] *= (np.hstack((n_in[:num_R],n_out[num_R:]))/n_in*power_factor)[:,np.newaxis]
+
+        if self.output_option[1] and k_out.size > 0:  #power
+            ray_k2sp = rays_tool(input_format = 'k',output_format = 'sp')
+            theta_in = ray_k2sp.convert(k_in)[:,1]
+            theta_out = ray_k2sp.convert(k_out)[:,1]
+            power_factor = np.cos(np.deg2rad(theta_out))/np.cos(np.deg2rad(theta_in))
+            k_out[:,-4:] *= (np.hstack((n_in[:num_R],n_out[num_R:]))/n_in*power_factor)[:,np.newaxis]
         
         #combine same raypath
-        if k_out.size > 0:
+        if self.output_option[2] and k_out.size > 0:
             unique, idx, counts = np.unique(k_out[:,:-4], axis = 0, return_index=True, return_counts = True)
             overlap_rays = unique[counts>1]
             if overlap_rays.size > 0:
                 k_unique = k_out[idx[counts==1]]
-                if self.output_option:
-                    stoke_vector = [np.sum(k_out[np.all(k_out[:,:-4] == k,axis = 1),-4:],axis = 0) for k in overlap_rays]
-                else:
-                    stoke_vector = [[1,0,0,0]]*len(overlap_rays)
+                # if self.output_option:
+                stoke_vector = [np.sum(k_out[np.all(k_out[:,:-4] == k,axis = 1),-4:],axis = 0) for k in overlap_rays]
+                # else:
+                #     stoke_vector = [[1,0,0,0]]*len(overlap_rays)
                 k_out = np.vstack((k_unique,np.hstack((overlap_rays, stoke_vector))))
         return k_out
     
 class Fresnel_loss:
-    def __init__(self, index):
+    def __init__(self, index,output_option = [0,0]):
         self.index = index
+        self.output_option = output_option
 
     def _fresnel_k(self,n_in,n_out,k_in):
         kx,ky,kz = k_in.astype(complex).T
@@ -494,7 +496,7 @@ class Fresnel_loss:
         t_matrix = np.array([[ tp,zero],[zero,ts]])
         return np.hstack((r_matrix,t_matrix)).T.reshape((-1,2,2,2))
     
-    def launched(self,k_in,output_option = 0):
+    def launched(self,k_in):
         z_direction = np.where(k_in[:,3]>=0,1,-1)
         n_out = np.where(z_direction==1,self.index[1](k_in[:,0]),self.index[0](k_in[:,0]))
         n_in = np.where(z_direction==1,self.index[0](k_in[:,0]),self.index[1](k_in[:,0]))
@@ -506,7 +508,7 @@ class Fresnel_loss:
         k_out = np.vstack((Rk_out,Tk_out))
 
         #energy stokes vector
-        if output_option and k_out.size > 0:
+        if self.output_option[0] and k_out.size > 0:
             num_R = np.sum(Tkz2<=0)
             n_out = np.hstack((n_out[Tkz2<=0], n_out[Tkz2>0]))
             n_in = np.hstack((n_in[Tkz2<=0], n_in[Tkz2>0]))
@@ -515,12 +517,12 @@ class Fresnel_loss:
             matrix = np.vstack((matrix[:num_R,0],matrix[num_R:,1]))
             Jmatrix = jones_to_muller(matrix)
             k_out[:,-4:] = np.real(np.einsum('ijk,ik->ij', Jmatrix, k_out[:,-4:]))
-            if output_option == 2:  #power
-                ray_k2sp = rays_tool(input_format = 'k',output_format = 'sp')
-                theta_in = ray_k2sp.convert(k_in)[:,1]
-                theta_out = ray_k2sp.convert(k_out)[:,1]
-                power_factor = np.cos(np.deg2rad(theta_out))/np.cos(np.deg2rad(theta_in))
-                k_out[:,-4:] *= (np.hstack((n_in[:num_R],n_out[num_R:]))/n_in*power_factor)[:,np.newaxis]
+        if self.output_option[1]:  #power
+            ray_k2sp = rays_tool(input_format = 'k',output_format = 'sp')
+            theta_in = ray_k2sp.convert(k_in)[:,1]
+            theta_out = ray_k2sp.convert(k_out)[:,1]
+            power_factor = np.cos(np.deg2rad(theta_out))/np.cos(np.deg2rad(theta_in))
+            k_out[:,-4:] *= (np.hstack((n_in[:num_R],n_out[num_R:]))/n_in*power_factor)[:,np.newaxis]
         return k_out
 
 class Receiver:
@@ -530,3 +532,5 @@ class Receiver:
     def launched(self, k_in):
         self.store += [k_in]
         return np.empty((0, 11))
+
+# %%

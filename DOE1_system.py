@@ -11,29 +11,34 @@ Air = Material('Air',Air_coefficient)
 LASF46B = Material('LASF46B',LASF46B_coefficient)
 NC = Material('nc',Nc_coefficient)
 
-source = Source([-38,11.53,1.45],-0.1,[-20,20,-15,15],[0.525], 
-                stokes_vector = [1,0,0,0],
-                fov_grid = (5,5),
-                spatial_grid = (7,7))
-
-# source = Source([-38,11.53,0],-0.1,[0,0,0,0],[0.525], 
+# source = Source([0,0,1.45],-0.1,[-20,20,-15,15],[0.525], 
 #                 stokes_vector = [1,0,0,0],
-#                 fov_grid = (1,1),
-#                 spatial_grid = (1,1))
+#                 fov_grid = (5,5),
+#                 spatial_grid = (7,7))
+
+source = Source([0,0,0],-0.1,[20,20,0,0],[0.525], 
+                stokes_vector = [1,0,0,0],
+                fov_grid = (1,1),
+                spatial_grid = (1,1))
 
 G1 = Grating([[0.3795,11]],[Air,LASF46B], add_order = (1,0), output_order = [[1,'T',1,0],[-1,'R',0,0]])
+G3 = Grating([[0.3795,180+11]],[Air,LASF46B], add_order = (1,0), output_order = [[-1,'T',1,0]], output_option = [0,0,0])
+F1 = Fresnel_loss([Air,LASF46B])
 F2 = Fresnel_loss([LASF46B,Air])
 R1 = Receiver()
 
 system = System(Air)
 system.add_source(source)
-system.add_element(0,G1,np.array([-38,11.53,1.5]))
-system.add_element(0,R1,np.array([[14.62,28.76],[-40.38,28.76],[-40.38,-11.24],[14.62,-11.24],[14.62,28.76]]))
-system.add_element(0.5,F2,np.array([[14.62,28.76],[-40.38,28.76],[-40.38,-11.24],[14.62,-11.24],[14.62,28.76]]))
+system.add_element(0,G1,np.array([0,0,1.5]))
+system.add_element(0,G3,np.array([[10,5],[3,5],[3,-5],[10,-5],[10,5]]))
+system.add_element(0,F1,np.array([[10,5],[-2,5],[-2,-5],[10,-5],[10,5]]))
+system.add_element(0.5,F2,np.array([[10,5],[-2,5],[-2,-5],[10,-5],[10,5]]))
+system.add_element(-1,R1,np.array([[10,5],[2,5],[2,-5],[10,-5],[10,5]]))
+system.add_element(1,R1,np.array([[10,5],[2,5],[2,-5],[10,-5],[10,5]]))
 
 #%%
 t0 = time.time()
-system.run(max_iter = 300,save_rays = True)
+system.run(max_iter = 30,save_rays = True)
 print(time.time()-t0)
 
 #%%

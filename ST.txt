@@ -1,0 +1,182 @@
+
+Duty = 0.9
+Duty_a = 0.245
+Hamonics = 10
+Height = 0.3772745361
+Index = 1.9
+Period = 0.3795
+Res_x = Period/(8*Hamonics)
+Res_z = Period/(8*Hamonics)
+Slant = 40
+alpha = 0
+background_alpha = nimag($background_material)
+background_index = nreal($background_material)
+background_material = Air
+boundary_max = 0.5*Period
+boundary_max_y = 0.5*Period
+boundary_min = -0.5*Period
+boundary_min_y = -0.5*Period
+cad_aspectratio = 1
+cad_aspectratio_y = 1
+default_material = Material
+delta = 0.1
+dimension = 3
+domain_max = 1.2*Height
+domain_min = -0.1
+eim = 0
+free_space_wavelength = 0.525
+height = width
+index_display_mode = DISPLAY_CONTOURMAPXZ
+k0 = (2*pi)/free_space_wavelength
+launch_angle = 0
+launch_theta = 0
+launch_tilt = 1
+rcwa_harmonics_x = Hamonics
+rcwa_harmonics_y = 0
+rcwa_incidence_convention = 1
+rcwa_index_res_x = Res_x
+rcwa_index_res_z = Res_z
+rcwa_launch_delta_phase = 0
+rcwa_launch_pol = 0
+rcwa_output_diffract_angle = 0
+rcwa_output_e_coef_format = 3
+rcwa_output_e_coef_ps = 1
+rcwa_output_option = 1
+rcwa_primary_direction = 5
+rcwa_ref_order_x = -1,1
+rcwa_reference_plane_dm = 1
+rcwa_tra_order_x = 1
+rcwa_variation_max = 360
+rcwa_variation_min = 0
+rcwa_variation_step = 5
+sim_tool = ST_DIFFRACTMOD
+structure = STRUCT_CHANNEL
+width = 31*Period
+
+
+material 1
+	name = Air
+	origin = Path=/RSoft/Dielectrics/Air Date=03/25/2022 Time=13:00
+	optical
+		nr = 1
+	end optical
+	thermo_optic
+		kappa_xx = 0.1*1e-6
+		kappa_yy = 0.1*1e-6
+		kappa_zz = 0.1*1e-6
+	end thermo_optic
+	semiconductor
+		elem_matfile = Oxide.mat
+		reg_regtype = oxide
+	end semiconductor
+end material
+
+material 2
+	name = LASF46B
+	optical
+		nr = userreal("LASF46B.dat",free_space_wavelength)
+	end optical
+end material
+
+material 3
+	name = Material
+	optical
+		nr = Index
+	end optical
+end material
+
+
+circuit_reference 1
+	profile_type = PROF_INACTIVE
+	color = 3
+	begin.x = 0
+	begin.z = 0
+	indfile = binary_unit.ind
+	local_symbols
+		Duty = Duty
+		Duty_a = Duty_a
+		Hamonics = Hamonics
+		Height = Height
+		Index = Index
+		Period = Period
+		Slant = Slant
+		alpha = alpha
+		default_material = Material
+		delta = delta
+		height = height
+		width = width
+	end local_symbols
+	lattice_nx = 31
+	lattice_period = Period
+end circuit_reference
+
+segment 2
+	color = 11
+	extended = 1
+	begin.x = 0
+	begin.z = -0.5 rel end segment 2
+	end.x = 0 rel begin segment 2
+	end.y = 0 rel begin segment 2
+	end.z = 0 rel begin component 1
+	mat_name = LASF46B
+end segment
+
+
+
+
+
+text_block 1
+	name = MOST
+	text =
+RSScanOptFormat1
+
+[MODE] 
+SCAN
+
+PREFIX T_slant40
+PREFIX_STYLE 0
+CLUSTER 0 0 0 0 1 ""
+USERSIM_CALLSTYLE 0 32765
+
+[SIMULATION]
+SIMTOOL ST_USER PS_simulator.py
+WINDOW_SIZE 2
+VERBOSITY 0
+PRE_WHOLE_CMD 
+POST_WHOLE_CMD 
+PRE_CMD 
+POST_CMD 
+PREPOST_ACTIVE 0
+PREPOST_ERRCODES 0
+EXTRA_DATAINDEX_CMDS 
+
+[ALGORITHM]
+NAME root_1d_brent
+MAXSTEPS DEFAULT  1000
+CONVERGENCE DEFAULT  1.0e-7
+
+[INDEPENDENT_VARIABLES_SCAN]
+IV_Declarations
+SYMTAB_SCALAR launch_angle Y :  IV_LINEAR_STEPS : 0 : 30 : 3 : 11 :  :  :
+
+[INDEPENDENT_VARIABLES_OPT]
+IV_Declarations
+
+IV_InitialValues
+
+[MEASUREMENTS:ST_DIFFRACTMOD]
+STANDARD dm_de_r_1_0_vs_phi Y 
+STANDARD dm_de_r_m1_0_vs_phi Y 
+STANDARD dm_de_t_1_0_vs_phi Y 
+STANDARD dm_de_t_m1_0_vs_phi Y 
+
+[MEASUREMENTS:ST_USER]
+USER nonpolar Y VECTOR FILE <prefix>.dat [:] ''
+USER p_polar Y VECTOR FILE <prefix>_p.dat [:,1] ''
+USER s_polar Y VECTOR FILE <prefix>_s.dat [:,1] ''
+
+[METRICS]
+
+	end text
+end text_block
+
