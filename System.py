@@ -27,7 +27,7 @@ class System:
             k_rays = self.source.launch()
             z_layer = np.asarray(list(self.layers.keys()))
             for num in range(max_iter):
-                print(num,len(k_rays))
+                #print(num,len(k_rays))
                 index = np.sqrt(np.sum(k_rays[:,1:4]**2,axis = 1))
                 direction_cosine = k_rays[:,1:4]/index[:,np.newaxis]
                 delta_z = z_layer-k_rays[:,6:7]
