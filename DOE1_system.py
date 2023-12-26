@@ -11,25 +11,40 @@ Air = Material('Air',Air_coefficient)
 LASF46B = Material('LASF46B',LASF46B_coefficient)
 NC = Material('nc',Nc_coefficient)
 
+<<<<<<< HEAD
 source = Source([0,0,0.1],-0.1,[-20,20,-15,15],[0.525], 
                 stokes_vector = [1,0,0,0],
                 fov_grid = (3,3),
                 spatial_grid = (3,3))
 
 # source = Source([0,0,0],-0.1,[0,0,0,0],[0.525], 
+=======
+# source = Source([0,0,1.45],-0.1,[-20,20,-15,15],[0.525], 
+>>>>>>> ff563c9f276b95430a59d9067237e5bc21007277
 #                 stokes_vector = [1,0,0,0],
-#                 fov_grid = (1,1),
-#                 spatial_grid = (1,1))
+#                 fov_grid = (5,5),
+#                 spatial_grid = (7,7))
 
+source = Source([0,0,0],-0.1,[20,20,0,0],[0.525], 
+                stokes_vector = [1,0,0,0],
+                fov_grid = (1,1),
+                spatial_grid = (1,1))
+
+<<<<<<< HEAD
 G1 = Grating([[0.3795,11]],[Air,LASF46B], add_order = (1,0), output_order = [[1,'T',1,0],[-1,'R',0,0]],output_option = [1,0,0])
 G1._set_simulator('Slanted', 'temp', [5,4], ['Slant','Height','Duty_a'], grid_size = (1,0.01,0.05), db_name = 'DB_Slant_3795_LASF46B_19.db' , hamonics = (8,0))
 E3 = Extracter([[0.3795,191]],[Air,LASF46B], add_order = (1,0), output_order = [[-1,'T',1,0]])
+=======
+G1 = Grating([[0.3795,11]],[Air,LASF46B], add_order = (1,0), output_order = [[1,'T',1,0],[-1,'R',0,0]])
+G3 = Grating([[0.3795,180+11]],[Air,LASF46B], add_order = (1,0), output_order = [[-1,'T',1,0]], output_option = [0,0,0])
+>>>>>>> ff563c9f276b95430a59d9067237e5bc21007277
 F1 = Fresnel_loss([Air,LASF46B])
 F2 = Fresnel_loss([LASF46B,Air])
 R1 = Receiver()
 
 system = System(Air)
 system.add_source(source)
+<<<<<<< HEAD
 system.add_element(0,G1,np.array([0,0,0.15]))
 system.add_element(0,E3,np.array([[10,5],[2,5],[2,-5],[10,-5],[10,5]]))
 system.add_element(0,F1,np.array([[10,5],[-2,5],[-2,-5],[10,-5],[10,5]]))
@@ -62,6 +77,19 @@ result = minimize(optfun, [40,0.37,0.2],bounds = [(20,50),(0.2,0.6),(0.2,0.5)],
                   method='Nelder-Mead')
 res = optfun(result.x)
 print(res)
+=======
+system.add_element(0,G1,np.array([0,0,1.5]))
+system.add_element(0,G3,np.array([[10,5],[3,5],[3,-5],[10,-5],[10,5]]))
+system.add_element(0,F1,np.array([[10,5],[-2,5],[-2,-5],[10,-5],[10,5]]))
+system.add_element(0.5,F2,np.array([[10,5],[-2,5],[-2,-5],[10,-5],[10,5]]))
+system.add_element(-1,R1,np.array([[10,5],[2,5],[2,-5],[10,-5],[10,5]]))
+system.add_element(1,R1,np.array([[10,5],[2,5],[2,-5],[10,-5],[10,5]]))
+
+#%%
+t0 = time.time()
+system.run(max_iter = 30,save_rays = True)
+print(time.time()-t0)
+>>>>>>> ff563c9f276b95430a59d9067237e5bc21007277
 
 #%%
 system.draw()

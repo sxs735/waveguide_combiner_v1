@@ -17,14 +17,18 @@ source = Source([[0.00,4.50],[4.00,4.50],[4.00,-4.50],[0.00,-4.50],[0.00,4.50]],
 #                 [1,1,0,0],[0.525], stokes_vector = [1,0,0,0],
 #                 fov_grid = (1,1),spatial_grid = (1,1), shrink = 0)
 
-G1_G = Grating([[0.455,0]],[Air,NC17], add_order = (1,0))
+# source = Source([[0.00,4.50],[4.00,4.50],[4.00,-4.50],[0.00,-4.50],[0.00,4.50]],-1E-3,
+#                 [0,0,0,0],[0.525], stokes_vector = [1,0,0,0],
+#                 fov_grid = (1,1),spatial_grid = (5,5))
+
+G1_G = Grating([[0.455,0]],[Air,NC17], add_order = (1,0), output_order = [[1,'T',1,0],[-1,'R',0,0]])
 G2A1_G = Grating([[0.380,-120]],[Air,NC17],add_order = (1,0))
 G2B1_G = Grating([[0.380, 120]],[Air,NC17],add_order = (1,0))
 G2A2_G = Grating([[0.380,-120]],[Air,NC17],add_order = (1,0))
 G2B2_G = Grating([[0.380, 120]],[Air,NC17],add_order = (1,0))
 G3_G = Grating([[0.455,180]],[Air,NC17], add_order = (1,0))
 
-G1_R = Grating([[0.565,0]],[Air,NC17], add_order = (1,0))
+G1_R = Grating([[0.565,0]],[Air,NC17], add_order = (1,0), output_order = [[1,'T',1,0],[-1,'R',0,0]])
 G2A1_R = Grating([[0.485,-120]],[Air,NC17],add_order = (1,0))
 G2B1_R = Grating([[0.485, 120]],[Air,NC17],add_order = (1,0))
 G2A2_R = Grating([[0.485,-120]],[Air,NC17],add_order = (1,0))
@@ -46,7 +50,7 @@ system.add_element(0,G3_G,np.array([[22.50,7.00],[43.50,7.00],[43.50,-7.00],[22.
 system.add_element(0,F1,np.array([[0,5.5],[16,10],[45,10],[45,-10],[16,-10],[0,-5.5],[0,5.5]]))
 system.add_element(1.375,F2,np.array([[0,5.5],[16,10],[45,10],[45,-10],[16,-10],[0,-5.5],[0,5.5]]))
 
-#system.add_element(1.475,G1_R,np.array([[0.00,4.50],[4.00,4.50],[4.00,-4.50],[0.00,-4.50],[0.00,4.50]]))
+# system.add_element(1.475,G1_R,np.array([[0.00,4.50],[4.00,4.50],[4.00,-4.50],[0.00,-4.50],[0.00,4.50]]))
 # system.add_element(1.475,G2A1_R,np.array([[9.00,6.30],[15.00,7.17],[15.00,0.50],[10.95,0.50],[9.00,6.30]]))
 # system.add_element(1.475,G2B1_R,np.array([[9.00,-6.30],[15.00,-7.17],[15.00,-0.50],[10.95,-0.50],[9.00,-6.30]]))
 # system.add_element(1.475,G2A2_R,np.array([[19.00,-0.50],[15.50,-9.00],[21.50,-9.00],[21.50,-0.50],[19.00,-0.50]]))

@@ -369,7 +369,11 @@ class Grating:
                 del self.db
 
 
+<<<<<<< HEAD
     def __init__(self, periods, index, add_order = (1,0), output_order = [], output_option = [0,0,1]):
+=======
+    def __init__(self, periods, index, add_order = (1,0), output_order = [], output_option = [0,0,0]):
+>>>>>>> ff563c9f276b95430a59d9067237e5bc21007277
         self.index = index
         add_order = (add_order[0],0) if np.asarray(periods).shape != (2,2) else add_order
         self.order = np.mgrid[-add_order[0]:add_order[0]+1, -add_order[1]:add_order[1]+1].reshape((2,-1))
@@ -445,7 +449,14 @@ class Grating:
         Tk_out[:,3] = (z_direction[Tkz2>0]*np.sqrt(Tkz2[Tkz2>0]))
         Rk_out[:,3] = (-z_direction[Rkz2>=0]*np.sqrt(Rkz2[Rkz2>=0]))
         k_out = np.vstack((Rk_out, Tk_out))
+<<<<<<< HEAD
         if sum(self.output_option):
+=======
+
+        #energy stokes vector
+        if self.output_option[0] and k_out.size > 0 and hasattr(self,'parameters'):
+            num_R = np.sum(Rkz2>=0)
+>>>>>>> ff563c9f276b95430a59d9067237e5bc21007277
             n_out = np.hstack((n_out[Rkz2>=0], n_out[Tkz2>0]))
             n_in = np.hstack((n_in[Rkz2>=0], n_in[Tkz2>0]))
             k_in = np.vstack((k_in[Rkz2>=0],k_in[Tkz2>0]))
@@ -458,7 +469,11 @@ class Grating:
             matrix = jones_to_muller(matrix)
             k_out[:,-4:] = np.real(np.einsum('ijk,ik->ij', matrix, k_out[:,-4:]))
 
+<<<<<<< HEAD
         if self.output_option[1]:  #power
+=======
+        if self.output_option[1] and k_out.size > 0:  #power
+>>>>>>> ff563c9f276b95430a59d9067237e5bc21007277
             ray_k2sp = rays_tool(input_format = 'k',output_format = 'sp')
             theta_in = ray_k2sp.convert(k_in)[:,1]
             theta_out = ray_k2sp.convert(k_out)[:,1]
@@ -471,12 +486,23 @@ class Grating:
             overlap_rays = unique[counts>1]
             if overlap_rays.size > 0:
                 k_unique = k_out[idx[counts==1]]
+<<<<<<< HEAD
                 stoke_vector = [np.sum(k_out[np.all(k_out[:,:-4] == k,axis = 1),-4:],axis = 0) for k in overlap_rays]
+=======
+                # if self.output_option:
+                stoke_vector = [np.sum(k_out[np.all(k_out[:,:-4] == k,axis = 1),-4:],axis = 0) for k in overlap_rays]
+                # else:
+                #     stoke_vector = [[1,0,0,0]]*len(overlap_rays)
+>>>>>>> ff563c9f276b95430a59d9067237e5bc21007277
                 k_out = np.vstack((k_unique,np.hstack((overlap_rays, stoke_vector))))
         return k_out
     
 class Fresnel_loss:
+<<<<<<< HEAD
     def __init__(self, index, output_option = [0,0]):
+=======
+    def __init__(self, index,output_option = [0,0]):
+>>>>>>> ff563c9f276b95430a59d9067237e5bc21007277
         self.index = index
         self.output_option = output_option
 
@@ -514,7 +540,10 @@ class Fresnel_loss:
             matrix = np.vstack((matrix[:num_R,0],matrix[num_R:,1]))
             Jmatrix = jones_to_muller(matrix)
             k_out[:,-4:] = np.real(np.einsum('ijk,ik->ij', Jmatrix, k_out[:,-4:]))
+<<<<<<< HEAD
 
+=======
+>>>>>>> ff563c9f276b95430a59d9067237e5bc21007277
         if self.output_option[1]:  #power
             ray_k2sp = rays_tool(input_format = 'k',output_format = 'sp')
             theta_in = ray_k2sp.convert(k_in)[:,1]
@@ -533,6 +562,7 @@ class Receiver:
     def launched(self, k_in):
         self.store += [k_in]
         return np.empty((0, 11))
+<<<<<<< HEAD
     
     def clean(self):
         self.store = []
@@ -579,3 +609,7 @@ class Extracter(Grating):
         k_out[:,-4:] /= (np.hstack((n_in[:num_R],n_out[num_R:]))/n_in*power_factor)[:,np.newaxis]
         
         return k_out
+=======
+
+# %%
+>>>>>>> ff563c9f276b95430a59d9067237e5bc21007277
