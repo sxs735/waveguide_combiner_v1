@@ -329,7 +329,7 @@ class Grating:
             variables = np.asarray(variables)
             if hasattr(self,'db'):
                 #buliding a boundary box
-                floor = np.round(variables[:,5:5+len(self.grid_size)]//self.grid_size*self.grid_size,self.decimal)
+                floor = np.round(variables[:,4:4+len(self.grid_size)]//self.grid_size*self.grid_size,self.decimal)
                 ceil = np.round(floor + self.grid_size ,self.decimal)
                 boxes = np.dstack((floor,ceil))
                 #search for the var that needs computation.
@@ -354,14 +354,14 @@ class Grating:
                 for i,var in enumerate(variables):
                     amp = np.abs(res_list[i])
                     phase = np.angle(res_list[i])
-                    grid_amp = griddata(var_list[i], amp, var[5:5+len(self.symbols[0])],method='linear')
-                    grid_phase = griddata(var_list[i], phase, var[5:5+len(self.symbols[0])],method='linear')
+                    grid_amp = griddata(var_list[i], amp, var[4:4+len(self.symbols[0])],method='linear')
+                    grid_phase = griddata(var_list[i], phase, var[4:4+len(self.symbols[0])],method='linear')
                     grid_res += [grid_amp*np.exp(1j*grid_phase)]
                 return np.asarray(grid_res).reshape((-1,2,2,2))
             else:
-                if variables.ndim <=1:
-                    variables = variables[np.newaxis,:]
-                return self._compute(variables)
+                computed_list = np.unique(variables,axis = 0)
+                res_list = self._compute(computed_list)
+                return np.asarray([res_list[np.all(computed_list == var, axis = 1)][0] for var in  variables])
             
         def _close_db(self):
             if hasattr(self,'db'):
@@ -415,7 +415,7 @@ class Grating:
         k_in_sp = ray_sp.convert(k_in)
         k_in_sp[:,2] -= self.periods[0,1]
         symbol_values =  self._structure_values(k_in_sp[:,4:6])
-        return np.vstack((direction,*np.round(k_in_sp[:,:4].T,4),*symbol_values,*k_in_sp[:,-2:].T)).T
+        return np.vstack((direction,*np.round(k_in_sp[:,:3].T,4),*symbol_values,*k_in_sp[:,-2:].T)).T
 
     def launched(self, k_in):
         #k_in: [wavelength,kx,ky,kz,x,y,z,s0,s1,s2,s3]
