@@ -1,11 +1,12 @@
 #%%
-from typing import Any
 import numpy as np
 from scipy.interpolate import griddata
 import subprocess, sqlite3, re, os, time
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
 import matplotlib.path as mpath
+from scipy.signal import convolve2d
+import matplotlib.pyplot as plt
 
 def save_dat(file_name,header,order_list,value):
     with open(file_name, 'w') as file:
@@ -44,7 +45,7 @@ def fake_rsoft(command):
     return 
 
 def jones_to_muller(jones):
-    u_matrix = 1/np.sqrt(2)*np.array([[1,0,0,1],[1,0,0,-1],[0,1,1,0],[0,-1j,1j,0]]) 
+    u_matrix = 1/np.sqrt(2)*np.array([[1,0,0,1],[1,0,0,-1],[0,1,1,0],[0,-1j,1j,0]])
     muller = [u_matrix @ np.kron(J, np.conjugate(J)) @ np.linalg.inv(u_matrix) for J in jones]
     return np.array(muller)
 
@@ -321,10 +322,10 @@ class Grating:
                 variable_list = np.asarray(variable_list)
                 indices = np.any(np.all(output[:, :-2][:, None, :].astype(float) == variable_list, axis=-1),axis = 1)
                 output = [[np.frombuffer(out[-2], dtype=np.complex128).reshape((2, 2)),
-                        np.frombuffer(out[-1], dtype=np.complex128).reshape((2, 2))] for out in output[indices]]
+                           np.frombuffer(out[-1], dtype=np.complex128).reshape((2, 2))] for out in output[indices]]
                 return np.asarray(output)
             
-        def _estimate(self, variables):
+        def _estimate_interpolation(self, variables):
             #variables = [[direction,wavelength,theta, phi,*symbol,order_m,order_n]]
             variables = np.asarray(variables)
             if hasattr(self,'db'):
@@ -362,7 +363,32 @@ class Grating:
                 computed_list = np.unique(variables,axis = 0)
                 res_list = self._compute(computed_list)
                 return np.asarray([res_list[np.all(computed_list == var, axis = 1)][0] for var in  variables])
-            
+        
+        def _estimate_near(self, variables):
+            #variables = [[direction,wavelength,theta, phi,*symbol,order_m,order_n]]
+            variables = np.asarray(variables)
+            if hasattr(self,'db'):
+                #buliding a boundary box
+                near = np.round(variables[:,4:4+len(self.grid_size)]/self.grid_size)*self.grid_size
+                #search for the var that needs computation.
+                var_list = np.hstack([variables[:,:4], near, variables[:,-2:]])
+                computed_list = np.unique(var_list, axis = 0)
+                res_list = np.asarray([self._search_db(var_i) for var_i in computed_list])
+                #compute
+                if np.any(np.isnan(res_list)):
+                    not_exist = np.any(np.isnan(res_list),axis = (1,2,3))
+                    self._compute(computed_list[:,:-2][not_exist],save_to_db = True)
+                #get results
+                res_list = np.asarray([self._search_db(var_i) for var_i in var_list])
+                if np.any(np.isnan(res_list)):
+                    not_exist = np.any(np.isnan(res_list),axis = (1,2,3))
+                    res_list[not_exist] = np.zeros(res_list[not_exist].shape)
+                return res_list
+            else:
+                computed_list = np.unique(variables,axis = 0)
+                res_list = self._compute(computed_list)
+                return np.asarray([res_list[np.all(computed_list == var, axis = 1)][0] for var in  variables])
+    
         def _close_db(self):
             if hasattr(self,'db'):
                 self.db.close()
@@ -453,7 +479,7 @@ class Grating:
 
         #energy stokes vector
         if self.output_option[0] and k_out.size > 0 and hasattr(self,'parameters'):
-            matrix = self.simulator._estimate(self._k_to_rsoft(k_in))  #estimate Jones
+            matrix = self.simulator._estimate_near(self._k_to_rsoft(k_in))  #estimate Jones
             matrix = np.vstack((matrix[:num_R,0],matrix[num_R:,1]))
             matrix = jones_to_muller(matrix)
             k_out[:,-4:] = np.real(np.einsum('ijk,ik->ij', matrix, k_out[:,-4:]))
@@ -471,7 +497,11 @@ class Grating:
             overlap_rays = unique[counts>1]
             if overlap_rays.size > 0:
                 k_unique = k_out[idx[counts==1]]
-                stoke_vector = [np.sum(k_out[np.all(k_out[:,:-4] == k,axis = 1),-4:],axis = 0) for k in overlap_rays]
+                k_out = np.delete(k_out,idx[counts==1],axis=0)
+                combine_k = lambda k: np.sum(k_out[np.all(k_out[:,:-4] == k,axis = 1),-4:],axis = 0)
+                with ThreadPoolExecutor() as executor:
+                    stoke_vector = list(executor.map(combine_k, overlap_rays))
+                #stoke_vector = [np.sum(k_out[np.all(k_out[:,:-4] == k,axis = 1),-4:],axis = 0) for k in overlap_rays]
                 k_out = np.vstack((k_unique,np.hstack((overlap_rays, stoke_vector))))
         return k_out
     
@@ -512,6 +542,7 @@ class Fresnel_loss:
             k_in = np.vstack((k_in[Tkz2<=0],k_in[Tkz2>0]))
             matrix = self._fresnel_k(n_in,n_out,k_in[:,1:4])#estimate Jones
             matrix = np.vstack((matrix[:num_R,0],matrix[num_R:,1]))
+            t0 = time.time()
             Jmatrix = jones_to_muller(matrix)
             k_out[:,-4:] = np.real(np.einsum('ijk,ik->ij', Jmatrix, k_out[:,-4:]))
         if self.output_option[1]:  #power
@@ -536,6 +567,38 @@ class Receiver:
     def clean(self):
         self.store = []
 
+    def illuminance(self,range, eye_size = 3, show = False):
+        eyebox = self()
+        x_data, y_data = eyebox[:,4] ,eyebox[:,5]
+        z_data = eyebox[:,-4]
+        scatter_matrix = np.zeros((91, 121))
+
+        x_bins = np.linspace(range[0][0], range[0][1], range[0][2] + 1)
+        y_bins = np.linspace(range[1][0], range[1][1], range[1][2] + 1)
+        x_indices = np.digitize(x_data, x_bins) - 1
+        y_indices = np.digitize(y_data, y_bins) - 1
+        scatter_matrix[y_indices, x_indices] = z_data
+
+        eye = np.round((eye_size/((range[0][1]-range[0][0])/range[0][2]),
+                        eye_size/((range[1][1]-range[1][0])/range[1][2]))).astype(np.int16)
+        print(eye)
+        kernel = np.ones(eye)
+        convolve_image = convolve2d(scatter_matrix, kernel, mode='valid')
+        if show:
+            plt.imshow(convolve_image , cmap='viridis',
+                       extent=[range[0][0], range[0][1], range[1][0], range[1][1]], 
+                       origin='lower', interpolation='none')
+            plt.show()
+        return convolve_image
+    
+    def footprint(self,range):
+        eyebox = self()
+        z = (eyebox[:,-4]-eyebox[:,-4].min())/(eyebox[:,-4].max()-eyebox[:,-4].min())
+        plt.scatter(eyebox[:,4] , eyebox[:,5], c= z)
+        plt.axis('equal')
+        plt.xlim(*range[0])
+        plt.ylim(*range[1])
+        plt.show()
 class Extracter(Grating):
     def launched(self, k_in):
         #k_in: [wavelength,kx,ky,kz,x,y,z,s0,s1,s2,s3]
