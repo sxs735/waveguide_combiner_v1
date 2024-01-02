@@ -7,6 +7,8 @@ from concurrent.futures import ThreadPoolExecutor
 import matplotlib.path as mpath
 from scipy.signal import convolve2d
 import matplotlib.pyplot as plt
+from functools import lru_cache
+
 
 def save_dat(file_name,header,order_list,value):
     with open(file_name, 'w') as file:
@@ -45,8 +47,12 @@ def fake_rsoft(command):
     return 
 
 def jones_to_muller(jones):
-    u_matrix = 1/np.sqrt(2)*np.array([[1,0,0,1],[1,0,0,-1],[0,1,1,0],[0,-1j,1j,0]])
-    muller = [u_matrix @ np.kron(J, np.conjugate(J)) @ np.linalg.inv(u_matrix) for J in jones]
+    @lru_cache(maxsize=None)
+    def JtoM(J):
+        J = np.asarray(J).reshape((2,2))
+        u_matrix = 1/np.sqrt(2)*np.array([[1,0,0,1],[1,0,0,-1],[0,1,1,0],[0,-1j,1j,0]])
+        return u_matrix @ np.kron(J, np.conjugate(J)) @ np.linalg.inv(u_matrix)
+    muller = [JtoM(tuple(J.reshape((-1)))) for J in jones]
     return np.array(muller)
 
 class Material:
@@ -542,7 +548,6 @@ class Fresnel_loss:
             k_in = np.vstack((k_in[Tkz2<=0],k_in[Tkz2>0]))
             matrix = self._fresnel_k(n_in,n_out,k_in[:,1:4])#estimate Jones
             matrix = np.vstack((matrix[:num_R,0],matrix[num_R:,1]))
-            t0 = time.time()
             Jmatrix = jones_to_muller(matrix)
             k_out[:,-4:] = np.real(np.einsum('ijk,ik->ij', Jmatrix, k_out[:,-4:]))
         if self.output_option[1]:  #power
@@ -571,17 +576,17 @@ class Receiver:
         eyebox = self()
         x_data, y_data = eyebox[:,4] ,eyebox[:,5]
         z_data = eyebox[:,-4]
-        scatter_matrix = np.zeros((91, 121))
 
-        x_bins = np.linspace(range[0][0], range[0][1], range[0][2] + 1)
-        y_bins = np.linspace(range[1][0], range[1][1], range[1][2] + 1)
+        scatter_matrix = np.zeros((range[1][2], range[0][2]))
+        x_bins = np.linspace(range[0][0], range[0][1], range[0][2])
+        y_bins = np.linspace(range[1][0], range[1][1], range[1][2])
         x_indices = np.digitize(x_data, x_bins) - 1
         y_indices = np.digitize(y_data, y_bins) - 1
-        scatter_matrix[y_indices, x_indices] = z_data
+        for i,z in enumerate(z_data):
+            scatter_matrix[y_indices[i], x_indices[i]] += z
 
         eye = np.round((eye_size/((range[0][1]-range[0][0])/range[0][2]),
                         eye_size/((range[1][1]-range[1][0])/range[1][2]))).astype(np.int16)
-        print(eye)
         kernel = np.ones(eye)
         convolve_image = convolve2d(scatter_matrix, kernel, mode='valid')
         if show:
@@ -599,6 +604,30 @@ class Receiver:
         plt.xlim(*range[0])
         plt.ylim(*range[1])
         plt.show()
+
+    def intensity(self,range,show = False):
+        eyebox = self()
+        ray_k2hv = rays_tool(input_format = 'k',output_format = 'hv')
+        x_data,y_data = ray_k2hv.convert(eyebox)[:,1:3].T
+        z_data = eyebox[:,-4]
+
+        scatter_matrix = np.zeros((range[1][2], range[0][2]))
+        x_bins = np.linspace(range[0][0], range[0][1], range[0][2])
+        y_bins = np.linspace(range[1][0], range[1][1], range[1][2])
+        x_indices = np.digitize(x_data, x_bins) - 1
+        y_indices = np.digitize(y_data, y_bins) - 1
+        for i,z in enumerate(z_data):
+            scatter_matrix[y_indices[i], x_indices[i]] += z
+
+        if show:
+            plt.imshow(scatter_matrix , cmap='viridis',
+                    extent=[range[0][0], range[0][1], range[1][0], range[1][1]], 
+                    origin='lower', interpolation='none')
+            plt.show()
+        return scatter_matrix
+
+
+
 class Extracter(Grating):
     def launched(self, k_in):
         #k_in: [wavelength,kx,ky,kz,x,y,z,s0,s1,s2,s3]
