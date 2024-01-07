@@ -55,11 +55,11 @@ class Doe3(Grating):
 
 G2 = Grating([[0.2772,-122.2]],[Air,LASF46B],add_order = (1,0),output_option = [1,0,1])
 #G2 = Doe2([[0.2772,-122.2]],[Air,LASF46B],add_order = (1,0),output_option = [1,0,1])
-G2._set_simulator('Binary2', 'temp2', [5,4], ['Height','Duty'], grid_size = (0.02,0.05), harmonics = (6,0),
+G2._set_simulator('Binary2', 'temp2', [5,4], ['Height','Duty'], grid_size = (0.02,0.05), harmonics = (8,0),
                   db_name = 'DB_Binary2.db')
 G3 = Grating([[0.3795,104.6]],[Air,LASF46B], add_order = (1,0),output_order = [[-1,'R',0,0],[-1,'T',1,0]],output_option = [1,0,1])
 #G3 = Doe3([[0.3795,104.6]],[Air,LASF46B], add_order = (1,0),output_order = [[-1,'R',0,0],[-1,'T',1,0]],output_option = [1,0,1])
-G3._set_simulator('Binary3', 'temp3', [5,4], ['Height','Duty'], grid_size = (0.02,0.05), harmonics = (6,0),
+G3._set_simulator('Binary3', 'temp3', [5,4], ['Height','Duty'], grid_size = (0.02,0.05), harmonics = (8,0),
                   db_name = 'DB_Binary3.db')
 
 F1 = Fresnel_loss([Air,LASF46B],output_option = [1,0])
