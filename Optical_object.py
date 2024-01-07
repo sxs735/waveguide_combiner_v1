@@ -25,13 +25,13 @@ def save_dat(file_name,header,order_list,value):
 
 def fake_rsoft(command):
     #time.sleep(1)
-    pattern = r'prefix=(\S+).*?Hamonics_x=(\S+).*?Hamonics_y=(\S+)'
+    pattern = r'prefix=(\S+).*?harmonics_x=(\S+).*?harmonics_y=(\S+)'
     matches = re.search(pattern, command)
     if matches:
-        prefix, hamonics_x, hamonics_y = matches.groups()
-        hamonics_x, hamonics_y = int(float(hamonics_x)), int(float(hamonics_y))
+        prefix, harmonics_x, harmonics_y = matches.groups()
+        harmonics_x, harmonics_y = int(float(harmonics_x)), int(float(harmonics_y))
         header = '#'+ command
-        order_list = ['none']+np.mgrid[-hamonics_x:hamonics_x+1, -hamonics_y:hamonics_y+1].T.reshape((-1,2)).tolist()
+        order_list = ['none']+np.mgrid[-harmonics_x:harmonics_x+1, -harmonics_y:harmonics_y+1].T.reshape((-1,2)).tolist()
         for suffix in ['_ep_ref_coef.dat','_es_ref_coef.dat','_ep_tra_coef.dat','_es_tra_coef.dat']:
             value = np.zeros((len(order_list)-1)*2+1)
             value[0] = 1
@@ -206,14 +206,14 @@ class Grating:
             number_str = str(number)
             return len(number_str.split('.')[1]) if '.' in number_str else 0
         
-        def __init__(self, indfile, prefix, z_direction, symbols, hamonics = (10,0)):
+        def __init__(self, indfile, prefix, z_direction, symbols, harmonics = (10,0)):
             self.indfile = indfile 
             self.prefix = prefix
             self.z_direction = z_direction
             self.symbols_base = ['rcwa_primary_direction','free_space_wavelength','launch_angle','launch_theta'],['INTEGER','REAL','REAL','REAL']
             self.symbols_values = ['order_m','order_n','r_matrix','t_matrix'],['INTEGER','INTEGER','BLOB','BLOB']
             self.symbols = symbols,['REAL']*len(symbols)
-            self.hamonics = hamonics
+            self.harmonics = harmonics
 
         def _generate_cmd(self,variable_list):
             symbols = self.symbols_base[0]+self.symbols[0]
@@ -223,8 +223,8 @@ class Grating:
                 for i,var in enumerate(variable_list):
                     dict_ = dict(zip(symbols, var[:len(symbols)]))
                     dict_['rcwa_launch_pol'] = pol[p]
-                    dict_['Hamonics_x'] = self.hamonics[0]
-                    dict_['Hamonics_y'] = self.hamonics[1]
+                    dict_['Harmonics_x'] = self.harmonics[0]
+                    dict_['Harmonics_y'] = self.harmonics[1]
                     cmd += [self.rs_cmd(self.indfile,self.prefix+f"_{i}_{p}", variable = dict_)]
             return cmd
         
@@ -284,7 +284,7 @@ class Grating:
                 executor.map(subprocess.call, commands)
 
             output = []
-            order = np.hstack(np.mgrid[-self.hamonics[0]:self.hamonics[0]+1, -self.hamonics[1]:self.hamonics[1]+1])
+            order = np.hstack(np.mgrid[-self.harmonics[0]:self.harmonics[0]+1, -self.harmonics[1]:self.harmonics[1]+1])
             for i,var in enumerate(variable_list):
                 var = var[:len(symbols)]
                 p_ep_r = np.loadtxt(self.prefix+f"_{i}_p_ep_ref_coef.dat",skiprows=2)[1:].reshape((-1,2))
@@ -375,7 +375,7 @@ class Grating:
             variables = np.asarray(variables)
             if hasattr(self,'db'):
                 #buliding a boundary box
-                near = np.round(variables[:,4:4+len(self.grid_size)]/self.grid_size)*self.grid_size
+                near = np.round(np.round(variables[:,4:4+len(self.grid_size)]/self.grid_size)*self.grid_size,self.decimal)
                 #search for the var that needs computation.
                 var_list = np.hstack([variables[:,:4], near, variables[:,-2:]])
                 computed_list = np.unique(var_list, axis = 0)
@@ -418,26 +418,29 @@ class Grating:
             self.g_vectors = (1/self.periods[:,0]*np.array([np.cos(g_phi),np.sin(g_phi)])).T
             self.order_gv = self.order.T @ self.g_vectors
 
-    def _set_simulator(self, indfile, prefix, z_direction, symbols, grid_size = (), db_name = '' , hamonics = (10,0)):
-        self.simulator = self.Simulator(indfile, prefix, z_direction, symbols, hamonics = hamonics)
+    def _set_simulator(self, indfile, prefix, z_direction, symbols, grid_size = (), db_name = '' , harmonics = (10,0)):
+        self.simulator = self.Simulator(indfile, prefix, z_direction, symbols, harmonics = harmonics)
         if db_name and grid_size:
             self.simulator._set_db(db_name,'rayleigh_matrices', grid_size)
 
-    def _set_structure(self,parameters,windows):
+    def _set_structure(self,parameters,m_windows= None,v_windows= None,modulate = 0):
         self.parameters = parameters
-        self.windows = windows
+        self.m_windows = m_windows
+        self.v_windows = v_windows
+        self.modulate = modulate
 
     def _structure_values(self,position):
         def sigmoid(x):
             return 1 / (1 + np.exp(-4*x))
         values = []
-        if hasattr(self,'parameters') and self.windows != 0:
+        if hasattr(self,'parameters') and self.v_windows:
+            m = 2*(position[:,self.modulate]-sum(self.m_windows)/2)/(self.m_windows[1]-self.m_windows[0])
             for i,p in enumerate(self.parameters):
                 poly = np.poly1d(p)
-                values += [(self.windows[i][1]-self.windows[i][0])*sigmoid(poly(position[:,0])) + self.windows[i][0]]
+                values += [(self.v_windows[i][1]-self.v_windows[i][0])*sigmoid(poly(m)) + self.v_windows[i][0]]
             values = np.array(values)
         else:
-            values = np.array([self.parameters]*len(position[:,0])).T
+            values = np.array([self.parameters]*len(position[:,self.modulate])).T
         return values
 
     def _k_to_rsoft(self,k_in):
@@ -486,6 +489,7 @@ class Grating:
         #energy stokes vector
         if self.output_option[0] and k_out.size > 0 and hasattr(self,'parameters'):
             matrix = self.simulator._estimate_near(self._k_to_rsoft(k_in))  #estimate Jones
+            #matrix = self.simulator._estimate_interpolation(self._k_to_rsoft(k_in))  #estimate Jones
             matrix = np.vstack((matrix[:num_R,0],matrix[num_R:,1]))
             matrix = jones_to_muller(matrix)
             k_out[:,-4:] = np.real(np.einsum('ijk,ik->ij', matrix, k_out[:,-4:]))
@@ -611,6 +615,7 @@ class Receiver:
         x_data,y_data = ray_k2hv.convert(eyebox)[:,1:3].T
         z_data = eyebox[:,-4]
 
+        dx,dy = (range[0][1]-range[0][0])/range[0][2]/2,(range[1][1]-range[1][0])/range[1][2]/2
         scatter_matrix = np.zeros((range[1][2], range[0][2]))
         x_bins = np.linspace(range[0][0], range[0][1], range[0][2])
         y_bins = np.linspace(range[1][0], range[1][1], range[1][2])
@@ -620,13 +625,15 @@ class Receiver:
             scatter_matrix[y_indices[i], x_indices[i]] += z
 
         if show:
-            plt.imshow(scatter_matrix , cmap='viridis',
-                    extent=[range[0][0], range[0][1], range[1][0], range[1][1]], 
-                    origin='lower', interpolation='none')
+            img = plt.imshow(scatter_matrix , cmap='viridis',vmin=0,
+                             extent=[range[0][0]-dx, range[0][1]+dx, range[1][0]-dy, range[1][1]+dy], 
+                             origin='lower', interpolation='none')
+            colorbar = plt.colorbar(img)  # 添加顏色欄
+            colorbar.set_label('Intensity')
+            plt.xlabel('Horizontal FOV')
+            plt.ylabel('Vertical FOV')
             plt.show()
         return scatter_matrix
-
-
 
 class Extracter(Grating):
     def launched(self, k_in):
